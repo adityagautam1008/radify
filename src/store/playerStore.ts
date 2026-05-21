@@ -34,6 +34,8 @@ interface PlayerState {
   shuffle: boolean;
   sleepTimerMinutes: number | null;  // null = off
   sleepTimerEnd: number | null;      // epoch ms when timer expires
+  isBuffering: boolean;
+  setIsBuffering: (isBuffering: boolean) => void;
   
   // Custom Personalization States
   recentSongs: Song[];
@@ -79,6 +81,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   shuffle: false,
   sleepTimerMinutes: null,
   sleepTimerEnd: null,
+  isBuffering: false,
+  setIsBuffering: (isBuffering) => set({ isBuffering }),
 
   // Initial State
   recentSongs: [],

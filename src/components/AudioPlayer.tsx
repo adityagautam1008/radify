@@ -40,7 +40,8 @@ export default function AudioPlayer() {
     prev,
     setTime,
     setDuration,
-    currentTime
+    currentTime,
+    setIsBuffering
   } = usePlayerStore();
 
   // Initialize Audio element once
@@ -49,12 +50,18 @@ export default function AudioPlayer() {
     if (!audio) return;
     audioRef.current = audio;
 
+    let fallbackTimer: NodeJS.Timeout | null = null;
+
     const handlePlay = () => play();
-    const handlePause = () => pause();
+    const handlePause = () => {
+      pause();
+      setIsBuffering(false);
+    };
     const handleEnded = () => next();
     const handleError = () => {
       const err = audio.error;
       console.error('[AudioPlayer] Audio element error event occurred:', err);
+      setIsBuffering(false);
 
       // Ignore MEDIA_ERR_ABORTED (code 1) or empty/data/document URLs which are not legitimate streaming errors
       if (err && err.code === 1) {
@@ -97,12 +104,57 @@ export default function AudioPlayer() {
       setDuration(audio.duration);
     };
 
-    // canplay fires when enough data is buffered to start — auto-play immediately
-    const handleCanPlay = () => {
+    // canplaythrough fires when browser estimates smooth playback
+    const handleCanPlayThrough = () => {
+      if (fallbackTimer) {
+        clearTimeout(fallbackTimer);
+        fallbackTimer = null;
+      }
+      setIsBuffering(false);
       const state = usePlayerStore.getState();
       if (state.isPlaying) {
         audio.play().catch(() => {});
       }
+    };
+
+    // canplay fires when enough data is buffered to start
+    const handleCanPlay = () => {
+      const state = usePlayerStore.getState();
+      if (state.isPlaying) {
+        // If it's a cached offline song, play immediately
+        if (audio.src.startsWith('blob:')) {
+          audio.play().catch(() => {});
+          setIsBuffering(false);
+          return;
+        }
+
+        // Wait up to 1.2 seconds for canplaythrough to estimate smooth streaming.
+        // Fall back to playing anyway to prevent hanging on slow/irregular connections.
+        if (fallbackTimer) clearTimeout(fallbackTimer);
+        fallbackTimer = setTimeout(() => {
+          const activeState = usePlayerStore.getState();
+          if (activeState.isPlaying) {
+            audio.play().catch(() => {});
+            setIsBuffering(false);
+          }
+        }, 1200);
+      }
+    };
+
+    const handleWaiting = () => {
+      setIsBuffering(true);
+    };
+
+    const handlePlaying = () => {
+      setIsBuffering(false);
+    };
+
+    const handleSeeking = () => {
+      setIsBuffering(true);
+    };
+
+    const handleSeeked = () => {
+      setIsBuffering(false);
     };
 
     audio.addEventListener('play', handlePlay);
@@ -111,11 +163,19 @@ export default function AudioPlayer() {
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('loadedmetadata', handleLoadedMetadata);
     audio.addEventListener('canplay', handleCanPlay);
+    audio.addEventListener('canplaythrough', handleCanPlayThrough);
+    audio.addEventListener('waiting', handleWaiting);
+    audio.addEventListener('playing', handlePlaying);
+    audio.addEventListener('seeking', handleSeeking);
+    audio.addEventListener('seeked', handleSeeked);
     audio.addEventListener('error', handleError);
 
     return () => {
       if (skipAfterErrorRef.current) {
         window.clearTimeout(skipAfterErrorRef.current);
+      }
+      if (fallbackTimer) {
+        clearTimeout(fallbackTimer);
       }
       audio.pause();
       audio.removeEventListener('play', handlePlay);
@@ -124,9 +184,14 @@ export default function AudioPlayer() {
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
       audio.removeEventListener('canplay', handleCanPlay);
+      audio.removeEventListener('canplaythrough', handleCanPlayThrough);
+      audio.removeEventListener('waiting', handleWaiting);
+      audio.removeEventListener('playing', handlePlaying);
+      audio.removeEventListener('seeking', handleSeeking);
+      audio.removeEventListener('seeked', handleSeeked);
       audio.removeEventListener('error', handleError);
     };
-  }, [play, pause, next, setTime, setDuration]);
+  }, [play, pause, next, setTime, setDuration, setIsBuffering]);
 
   const getBestStreamUrl = () => {
     if (!currentSong) return '';
@@ -186,9 +251,9 @@ export default function AudioPlayer() {
           return;
         }
 
+        setIsBuffering(true);
         audio.src = streamUrl;
         audio.load();
-        audio.play().catch(() => {});
 
         // Update Media Session metadata for background/lock screen controls
         if ('mediaSession' in navigator) {
@@ -212,6 +277,7 @@ export default function AudioPlayer() {
       } else {
         audio.src = '';
         pause();
+        setIsBuffering(false);
       }
     };
 
@@ -223,7 +289,7 @@ export default function AudioPlayer() {
         URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [currentSong, pause]);
+  }, [currentSong, pause, setIsBuffering]);
 
   // Handle Play/Pause
   useEffect(() => {

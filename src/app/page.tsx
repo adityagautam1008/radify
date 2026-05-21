@@ -207,7 +207,8 @@ export default function AppHome() {
     queue,
     currentIndex,
     moveQueueSong,
-    removeQueueSong
+    removeQueueSong,
+    isBuffering
   } = usePlayerStore();
 
   // Lyrics Side Drawer Refs and Calculations
@@ -269,6 +270,60 @@ export default function AppHome() {
       document.body.style.overflow = '';
     };
   }, [showMobileDetails]);
+
+  // History popstate navigation interceptor for overlay/drawer dismissals ("go back one step")
+  const isSyncingRef = useRef(false);
+  const prevOverlaysRef = useRef<string[]>([]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handlePopState = (event: PopStateEvent) => {
+      isSyncingRef.current = true;
+      const nextOverlays: string[] = event.state?.activeOverlays || [];
+      
+      setShowLyrics(nextOverlays.includes('lyrics'));
+      setShowMobileDetails(nextOverlays.includes('mobileDetails'));
+      setShowMobileQueue(nextOverlays.includes('mobileQueue'));
+      setShowAiModal(nextOverlays.includes('aiModal'));
+      setShowCreateModal(nextOverlays.includes('createModal'));
+      
+      setTimeout(() => {
+        isSyncingRef.current = false;
+      }, 0);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const currentOverlays: string[] = [];
+    if (showLyrics) currentOverlays.push('lyrics');
+    if (showMobileDetails) currentOverlays.push('mobileDetails');
+    if (showMobileQueue) currentOverlays.push('mobileQueue');
+    if (showAiModal) currentOverlays.push('aiModal');
+    if (showCreateModal) currentOverlays.push('createModal');
+
+    if (isSyncingRef.current) {
+      prevOverlaysRef.current = currentOverlays;
+      return;
+    }
+
+    const prevOverlays = prevOverlaysRef.current;
+    
+    if (currentOverlays.length > prevOverlays.length) {
+      // Overlay opened: push history entry
+      window.history.pushState({ activeOverlays: currentOverlays }, '');
+    } else if (currentOverlays.length < prevOverlays.length) {
+      // Overlay closed manually by UI click: sync history stack by going back
+      window.history.back();
+    }
+
+    prevOverlaysRef.current = currentOverlays;
+  }, [showLyrics, showMobileDetails, showMobileQueue, showAiModal, showCreateModal]);
 
   // Load state and data on mount
   useEffect(() => {
@@ -3679,7 +3734,9 @@ export default function AppHome() {
                   onClick={(e) => { e.stopPropagation(); isPlaying ? pause() : play(); }}
                   className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-black hover:scale-105 transition shadow-lg"
                 >
-                  {isPlaying ? (
+                  {isBuffering ? (
+                    <Loader2 size={18} className="animate-spin text-black" />
+                  ) : isPlaying ? (
                     <Pause size={18} fill="currentColor" />
                   ) : (
                     <Play size={18} fill="currentColor" className="ml-1" />
@@ -3792,7 +3849,9 @@ export default function AppHome() {
                   onClick={(e) => { e.stopPropagation(); isPlaying ? pause() : play(); }}
                   className="w-9 h-9 bg-white rounded-full flex items-center justify-center text-black hover:scale-105 active:scale-95 transition shadow-md flex-shrink-0"
                 >
-                  {isPlaying ? (
+                  {isBuffering ? (
+                    <Loader2 size={16} className="animate-spin text-black" />
+                  ) : isPlaying ? (
                     <Pause size={16} fill="currentColor" />
                   ) : (
                     <Play size={16} fill="currentColor" className="ml-0.5" />
@@ -3995,7 +4054,9 @@ export default function AppHome() {
                       onClick={isPlaying ? pause : play}
                       className="w-16 h-16 bg-white text-black rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition shadow-2xl"
                     >
-                      {isPlaying ? (
+                      {isBuffering ? (
+                        <Loader2 size={24} className="animate-spin text-black" />
+                      ) : isPlaying ? (
                         <Pause size={24} fill="currentColor" />
                       ) : (
                         <Play size={24} fill="currentColor" className="ml-0.5" />
