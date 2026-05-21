@@ -6,6 +6,23 @@ export const dynamic = 'force-dynamic';
 let cachedInstances: string[] = [];
 let lastFetchTime = 0;
 
+// Simple in-memory cache for resolved stream URLs to ensure range/seeking requests reuse the same source
+const resolvedCache = new Map<string, { url: string; timestamp: number }>();
+
+// Cleanup cache periodically to avoid memory leak
+if (typeof global !== 'undefined') {
+  if (!(global as any).__resolvedCacheCleanupInterval) {
+    (global as any).__resolvedCacheCleanupInterval = setInterval(() => {
+      const now = Date.now();
+      for (const [key, val] of resolvedCache.entries()) {
+        if (now - val.timestamp > 1800 * 1000) { // 30 minutes TTL
+          resolvedCache.delete(key);
+        }
+      }
+    }, 300 * 1000).unref?.();
+  }
+}
+
 // Dynamic list of active public Invidious instances
 async function getInvidiousInstances(): Promise<string[]> {
   const now = Date.now();
@@ -109,21 +126,23 @@ export async function GET(request: NextRequest) {
   const id = searchParams.get('id');
   const title = searchParams.get('title');
   const artist = searchParams.get('artist');
+  const nocache = searchParams.get('nocache') === 'true';
+  const json = searchParams.get('json') === 'true';
 
   if (!id) {
     return NextResponse.json({ error: 'Video ID is required' }, { status: 400 });
   }
 
-  // 1. Try Invidious streaming resolution first
-  try {
-    const instance = await findFastestInstance(id);
-    
-    // Redirect the browser to the Invidious instance's proxy stream endpoint.
-    // Setting `local=true` forces Invidious to proxy the googlevideo stream through its own IP,
-    // which matches the IP used to resolve the URL, resolving the 403 Forbidden IP mismatch lock.
-    // We request `itag=140` which is universal AAC/m4a audio (highly compatible with iOS, Android, and web).
-    const streamUrl = `${instance}/latest_version?id=${id}&itag=140&local=true`;
-
+  // Response helper to cleanly serve redirects or direct JSON payloads
+  const sendResponse = (streamUrl: string) => {
+    if (json) {
+      return NextResponse.json({ streamUrl }, {
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+        }
+      });
+    }
     return NextResponse.redirect(streamUrl, {
       status: 307,
       headers: {
@@ -131,10 +150,26 @@ export async function GET(request: NextRequest) {
         'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
       }
     });
+  };
+
+  // 1. Check simple in-memory cache first to keep range/seeking pings consistent
+  if (!nocache && resolvedCache.has(id)) {
+    const cached = resolvedCache.get(id)!;
+    console.log(`[play-yt] Serving cached stream URL for video ${id}`);
+    return sendResponse(cached.url);
+  }
+
+  // 2. Try Invidious streaming resolution
+  try {
+    const instance = await findFastestInstance(id);
+    const streamUrl = `${instance}/latest_version?id=${id}&itag=140&local=true`;
+
+    resolvedCache.set(id, { url: streamUrl, timestamp: Date.now() });
+    return sendResponse(streamUrl);
   } catch (error: any) {
     console.warn(`Invidious streaming resolution failed for video ${id}, attempting JioSaavn fallback...`, error);
 
-    // 2. Fallback to JioSaavn stream if title/artist are available
+    // 3. Fallback to JioSaavn stream if title/artist are available
     if (title) {
       try {
         const query = artist ? `${title} ${artist}` : title;
@@ -142,19 +177,13 @@ export async function GET(request: NextRequest) {
         const fallbackSongs = await fetchSaavnSongsWithFallback(query, 3);
         
         if (fallbackSongs && fallbackSongs.length > 0) {
-          // Find the best match or take the first high-quality JioSaavn track
           const fallbackSong = fallbackSongs[0];
           const streamUrl = fallbackSong.streamUrl_high || fallbackSong.streamUrl || fallbackSong.streamUrl_med || fallbackSong.streamUrl_low;
           
           if (streamUrl) {
             console.log(`[play-yt] JioSaavn fallback SUCCESS for "${query}". Streaming URL: ${streamUrl}`);
-            return NextResponse.redirect(streamUrl, {
-              status: 307,
-              headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
-              }
-            });
+            resolvedCache.set(id, { url: streamUrl, timestamp: Date.now() });
+            return sendResponse(streamUrl);
           }
         }
       } catch (saavnErr) {
@@ -162,20 +191,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 3. Absolute Last Resort: Redirect to a random Invidious candidate directly
+    // 4. Absolute Last Resort: Redirect to a random Invidious candidate directly
     try {
       const instances = await getInvidiousInstances();
       const randomInstance = instances[Math.floor(Math.random() * instances.length)];
       const streamUrl = `${randomInstance}/latest_version?id=${id}&itag=140&local=true`;
       console.warn(`[play-yt] Fallback to random instance direct redirect: ${streamUrl}`);
       
-      return NextResponse.redirect(streamUrl, {
-        status: 307,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
-        }
-      });
+      resolvedCache.set(id, { url: streamUrl, timestamp: Date.now() });
+      return sendResponse(streamUrl);
     } catch (finalErr) {
       console.error('All streaming resolution failovers failed:', finalErr);
       return NextResponse.json({ error: 'Failed to stream audio' }, { status: 500 });
