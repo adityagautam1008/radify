@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getAudioUrl } from '@/utils/ytDlp';
 import { fetchSaavnSongsWithFallback } from '@/lib/saavn';
 
 export const dynamic = 'force-dynamic';
@@ -103,12 +104,20 @@ export async function GET(request: NextRequest) {
   // Build the pool of target URLs to attempt proxying from
   const urlsToTry: string[] = [];
 
-  // 1. If we have a cached stream URL, prioritize attempting to seek/load from it
+  // 1. Attempt direct YouTube audio URL via yt-dlp (fastest path, prepend to front)
+  if (!nocache) {
+    const ytdlpUrl = await getAudioUrl(id);
+    if (ytdlpUrl) {
+      urlsToTry.push(ytdlpUrl);
+    }
+  }
+
+  // 2. If we have a cached stream URL, prioritize attempting to seek/load from it
   if (!nocache && resolvedCache.has(id)) {
     urlsToTry.push(resolvedCache.get(id)!.url);
   }
 
-  // 2. Add candidates (/latest_version URLs) from active Invidious instances
+  // 3. Add candidates (/latest_version URLs) from active Invidious instances
   const instances = await getInvidiousInstances();
   const preferred = [
     'https://inv.thepixora.com',

@@ -44,9 +44,12 @@ export function mapJioSaavnSong(song: JioSaavnSong) {
   let streamUrl_320 = decryptedUrl;
 
   if (decryptedUrl) {
-    streamUrl_96 = decryptedUrl.replace('_96.mp4', '_96.mp4');
-    streamUrl_160 = decryptedUrl.replace('_96.mp4', '_160.mp4');
-    streamUrl_320 = decryptedUrl.replace('_96.mp4', '_320.mp4');
+    // The decrypted URL contains a quality suffix like _96.mp4 or _128.mp4.
+    // Build all quality variants by replacing whatever quality is present.
+    const qualityPattern = /_(96|128|160|320)\.mp4/;
+    streamUrl_96 = decryptedUrl.replace(qualityPattern, '_96.mp4');
+    streamUrl_160 = decryptedUrl.replace(qualityPattern, '_160.mp4');
+    streamUrl_320 = decryptedUrl.replace(qualityPattern, '_320.mp4');
   }
 
   const highResImage = song.image

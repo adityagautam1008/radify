@@ -64,13 +64,12 @@ export default function AudioPlayer() {
         console.log('[AudioPlayer] Suppressed ended event on silent transition WAV');
         return;
       }
-      // Safely ensure the track actually played through to the end before triggering next()
-      const hasEndedProperly = audio.duration && audio.duration > 10 && audio.currentTime > 0 && Math.abs(audio.duration - audio.currentTime) < 2.5;
-      if (hasEndedProperly) {
-        next();
-      } else {
+      // Only suppress if the audio barely played at all (false alarm / aborted load)
+      if (audio.currentTime < 3) {
         console.warn('[AudioPlayer] Suppressed false ended event. CurrentTime:', audio.currentTime, 'Duration:', audio.duration);
+        return;
       }
+      next();
     };
     const handleError = () => {
       const err = audio.error;
@@ -319,6 +318,14 @@ export default function AudioPlayer() {
         audio.src = streamUrl;
         audio.load();
 
+        // Trigger play as soon as canplay fires (handled in handleCanPlay/handleCanPlayThrough),
+        // but also attempt it immediately — the browser will queue it once data is ready.
+        if (usePlayerStore.getState().isPlaying) {
+          audio.play().catch(() => {
+            // Will be retried by canplay/canplaythrough handlers
+          });
+        }
+
         // Update Media Session metadata for background/lock screen controls
         if ('mediaSession' in navigator) {
           const artworkUrl = currentSong.image || '';
@@ -358,7 +365,9 @@ export default function AudioPlayer() {
   // Handle Play/Pause
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio || !audio.src) return;
+    if (!audio) return;
+    // Don't act on the silent placeholder WAV – wait for the real src
+    if (!audio.src || audio.src.startsWith('data:') || audio.src === window.location.href) return;
 
     if (isPlaying) {
       audio.play().catch(() => {
