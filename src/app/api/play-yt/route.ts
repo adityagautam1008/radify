@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { fetchSaavnSongsWithFallback } from '@/lib/saavn';
 
 export const dynamic = 'force-dynamic';
-
 
 let cachedInstances: string[] = [];
 let lastFetchTime = 0;
@@ -72,19 +72,21 @@ async function findFastestInstance(videoId: string): Promise<string> {
 
   const checkInstance = async (instance: string): Promise<string> => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second health probe timeout
+    const timeoutId = setTimeout(() => controller.abort(), 2500); // 2.5 second streaming HEAD probe timeout
 
     try {
-      // Probing robots.txt to verify instance server is alive and responding quickly
-      // without triggering server-side YouTube IP blocks or proxy rate limits
-      const res = await fetch(`${instance}/robots.txt`, {
-        signal: controller.signal
+      // Probing actual stream redirect URL to verify it resolves without 403 / 502 / 503 errors.
+      // We use HEAD method to only fetch headers and verify the stream is playable/accessible.
+      const res = await fetch(`${instance}/latest_version?id=${videoId}&itag=140&local=true`, {
+        method: 'HEAD',
+        signal: controller.signal,
+        redirect: 'manual' // We only want to see if the instance successfully returns a 200, 206, 302, 307 status
       });
       clearTimeout(timeoutId);
-      if (res.ok || res.status === 200) {
+      if (res.status === 200 || res.status === 206 || res.status === 302 || res.status === 307) {
         return instance;
       }
-      throw new Error(`Instance health check returned status: ${res.status}`);
+      throw new Error(`Instance streaming probe failed with status: ${res.status}`);
     } catch (err) {
       clearTimeout(timeoutId);
       throw err;
@@ -95,7 +97,7 @@ async function findFastestInstance(videoId: string): Promise<string> {
     // Promise.any returns the first successfully resolved promise
     return await Promise.any(candidates.map(checkInstance));
   } catch (err) {
-    console.warn('All parallel Invidious instance probes failed, using fallback.');
+    console.warn('All parallel Invidious streaming HEAD probes failed, using fallback.');
     // Pick a working fallback candidate we tested successfully
     const backups = ['https://invidious.nerdvpn.de', 'https://yewtu.be', 'https://inv.vern.cc', 'https://invidious.no-logs.com'];
     return backups[Math.floor(Math.random() * backups.length)];
@@ -105,11 +107,14 @@ async function findFastestInstance(videoId: string): Promise<string> {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
+  const title = searchParams.get('title');
+  const artist = searchParams.get('artist');
 
   if (!id) {
     return NextResponse.json({ error: 'Video ID is required' }, { status: 400 });
   }
 
+  // 1. Try Invidious streaming resolution first
   try {
     const instance = await findFastestInstance(id);
     
@@ -127,7 +132,53 @@ export async function GET(request: NextRequest) {
       }
     });
   } catch (error: any) {
-    console.error('Failed to resolve streaming URL for video:', id, error);
-    return NextResponse.json({ error: 'Failed to stream audio' }, { status: 500 });
+    console.warn(`Invidious streaming resolution failed for video ${id}, attempting JioSaavn fallback...`, error);
+
+    // 2. Fallback to JioSaavn stream if title/artist are available
+    if (title) {
+      try {
+        const query = artist ? `${title} ${artist}` : title;
+        console.log(`[play-yt] Searching JioSaavn fallback for "${query}"`);
+        const fallbackSongs = await fetchSaavnSongsWithFallback(query, 3);
+        
+        if (fallbackSongs && fallbackSongs.length > 0) {
+          // Find the best match or take the first high-quality JioSaavn track
+          const fallbackSong = fallbackSongs[0];
+          const streamUrl = fallbackSong.streamUrl_high || fallbackSong.streamUrl || fallbackSong.streamUrl_med || fallbackSong.streamUrl_low;
+          
+          if (streamUrl) {
+            console.log(`[play-yt] JioSaavn fallback SUCCESS for "${query}". Streaming URL: ${streamUrl}`);
+            return NextResponse.redirect(streamUrl, {
+              status: 307,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+              }
+            });
+          }
+        }
+      } catch (saavnErr) {
+        console.error('[play-yt] JioSaavn fallback search failed:', saavnErr);
+      }
+    }
+
+    // 3. Absolute Last Resort: Redirect to a random Invidious candidate directly
+    try {
+      const instances = await getInvidiousInstances();
+      const randomInstance = instances[Math.floor(Math.random() * instances.length)];
+      const streamUrl = `${randomInstance}/latest_version?id=${id}&itag=140&local=true`;
+      console.warn(`[play-yt] Fallback to random instance direct redirect: ${streamUrl}`);
+      
+      return NextResponse.redirect(streamUrl, {
+        status: 307,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+        }
+      });
+    } catch (finalErr) {
+      console.error('All streaming resolution failovers failed:', finalErr);
+      return NextResponse.json({ error: 'Failed to stream audio' }, { status: 500 });
+    }
   }
 }

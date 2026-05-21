@@ -103,7 +103,7 @@ export default function AudioPlayer() {
         console.log(`[AudioPlayer] Recovering YouTube stream. Attempt: ${retryCountRef.current}. Saved position: ${savedTime}`);
         
         const videoId = state.currentSong.id.replace('youtube-', '');
-        const freshUrl = `/api/play-yt?id=${videoId}&nocache=true&ts=${Date.now()}`;
+        const freshUrl = `/api/play-yt?id=${videoId}&title=${encodeURIComponent(state.currentSong.title)}&artist=${encodeURIComponent(state.currentSong.artist)}&nocache=true&ts=${Date.now()}`;
         
         setIsBuffering(true);
         audio.src = freshUrl;
@@ -236,7 +236,22 @@ export default function AudioPlayer() {
 
   const getBestStreamUrl = () => {
     if (!currentSong) return '';
-    return currentSong.streamUrl_high || currentSong.streamUrl || currentSong.streamUrl_med || currentSong.streamUrl_low || '';
+    let url = currentSong.streamUrl_high || currentSong.streamUrl || currentSong.streamUrl_med || currentSong.streamUrl_low || '';
+    if (url.startsWith('/api/play-yt')) {
+      try {
+        const parsedUrl = new URL(url, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
+        if (!parsedUrl.searchParams.has('title')) {
+          parsedUrl.searchParams.set('title', currentSong.title);
+        }
+        if (!parsedUrl.searchParams.has('artist')) {
+          parsedUrl.searchParams.set('artist', currentSong.artist);
+        }
+        url = parsedUrl.pathname + parsedUrl.search;
+      } catch (e) {
+        console.warn('[AudioPlayer] Error parsing play-yt URL in getBestStreamUrl:', e);
+      }
+    }
+    return url;
   };
 
   const verifyInternalStream = async (url: string) => {

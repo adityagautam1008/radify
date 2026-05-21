@@ -96,7 +96,7 @@ async function searchInvidious(query: string): Promise<any[]> {
             duration: video.lengthSeconds || 0,
             artist: video.author || 'Unknown Artist',
             image: `https://img.youtube.com/vi/${video.videoId}/hqdefault.jpg`,
-            streamUrl: `/api/play-yt?id=${video.videoId}`,
+            streamUrl: `/api/play-yt?id=${video.videoId}&title=${encodeURIComponent(video.title)}&artist=${encodeURIComponent(video.author || 'Unknown Artist')}`,
             source: 'youtube'
           }));
         }
@@ -128,7 +128,7 @@ async function searchYtDlp(query: string): Promise<any[]> {
           duration: video.duration || 0,
           artist: video.channel || video.uploader || 'Unknown Artist',
           image: `https://img.youtube.com/vi/${video.id}/hqdefault.jpg`,
-          streamUrl: `/api/play-yt?id=${video.id}`,
+          streamUrl: `/api/play-yt?id=${video.id}&title=${encodeURIComponent(video.title || 'Unknown')}&artist=${encodeURIComponent(video.channel || video.uploader || 'Unknown Artist')}`,
           source: 'youtube'
         });
       } catch { }
@@ -187,7 +187,7 @@ function extractVideosFromJson(jsonData: any): any[] {
         duration,
         artist,
         image: `https://img.youtube.com/vi/${video.videoId}/hqdefault.jpg`,
-        streamUrl: `/api/play-yt?id=${video.videoId}`,
+        streamUrl: `/api/play-yt?id=${video.videoId}&title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`,
         source: 'youtube'
       });
     }
