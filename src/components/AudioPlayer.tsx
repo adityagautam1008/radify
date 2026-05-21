@@ -53,14 +53,36 @@ export default function AudioPlayer() {
     const handlePause = () => pause();
     const handleEnded = () => next();
     const handleError = () => {
+      const err = audio.error;
+      console.error('[AudioPlayer] Audio element error event occurred:', err);
+
+      // Ignore MEDIA_ERR_ABORTED (code 1) or empty/data/document URLs which are not legitimate streaming errors
+      if (err && err.code === 1) {
+        console.log('[AudioPlayer] Ignoring MEDIA_ERR_ABORTED.');
+        return;
+      }
+      
+      const currentSrc = audio.src || '';
+      if (!currentSrc || currentSrc.startsWith('data:') || currentSrc === window.location.href || currentSrc === window.location.href + '/') {
+        console.log('[AudioPlayer] Ignoring error for empty/silent/document source:', currentSrc);
+        return;
+      }
+
+      const state = usePlayerStore.getState();
+      if (!state.currentSong) {
+        console.log('[AudioPlayer] Ignoring error since no currentSong is active.');
+        return;
+      }
+
+      console.error('[AudioPlayer] Legitimate stream error. Pausing and scheduling skip...');
       pause();
       if (skipAfterErrorRef.current) {
         window.clearTimeout(skipAfterErrorRef.current);
       }
       skipAfterErrorRef.current = window.setTimeout(() => {
-        const state = usePlayerStore.getState();
-        if (state.queue.length > 1) {
-          state.next();
+        const activeState = usePlayerStore.getState();
+        if (activeState.queue.length > 1) {
+          activeState.next();
         }
       }, 450);
     };
@@ -128,7 +150,8 @@ export default function AudioPlayer() {
     const loadToken = ++songLoadTokenRef.current;
 
     audio.pause();
-    audio.removeAttribute('src');
+    // Set src to silent WAV base64 instead of removeAttribute('src') to prevent error events on mobile
+    audio.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAAA";
     audio.load();
     setDuration(0);
 
