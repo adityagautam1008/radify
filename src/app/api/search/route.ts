@@ -15,16 +15,30 @@ export async function getInvidiousInstances(): Promise<string[]> {
     return cachedInstances;
   }
 
+  // Large pool of highly stable and popular public Invidious instances
+  const fallbacks = [
+    'https://yewtu.be',
+    'https://invidious.nerdvpn.de',
+    'https://inv.vern.cc',
+    'https://invidious.no-logs.com',
+    'https://iv.melmac.space',
+    'https://inv.nadeko.net',
+    'https://invidious.f5.si',
+    'https://yt.chocolatemoo53.com',
+    'https://inv.thepixora.com',
+    'https://vid.puffyan.us',
+    'https://invidious.asir.dev',
+    'https://invidious.projectsegfaut.im'
+  ];
+
   try {
     const res = await fetch('https://api.invidious.io/instances.json?sort_by=api,type');
     if (res.ok) {
       const data = await res.json();
       const active: string[] = [];
       for (const item of data) {
-        const hostname = item[0];
         const info = item[1];
         if (
-          info.api === true &&
           info.type === 'https' &&
           info.uri &&
           !info.uri.includes('.onion') &&
@@ -34,22 +48,21 @@ export async function getInvidiousInstances(): Promise<string[]> {
         }
       }
       if (active.length > 0) {
-        cachedInstances = active;
+        // Merge fetched active instances with our trusted fallback list, ensuring uniqueness
+        const merged = Array.from(new Set([...active, ...fallbacks]));
+        cachedInstances = merged;
         lastFetchTime = now;
-        return active;
+        return merged;
       }
     }
   } catch (err) {
     console.error('Error fetching invidious instances:', err);
   }
 
-  // Stable fallbacks
-  const fallbacks = [
-    'https://inv.thepixora.com',
-    'https://yewtu.be',
-    'https://vid.puffyan.us',
-  ];
-  return [...fallbacks].sort(() => Math.random() - 0.5);
+  const shuffledFallbacks = [...fallbacks].sort(() => Math.random() - 0.5);
+  cachedInstances = shuffledFallbacks;
+  lastFetchTime = now;
+  return shuffledFallbacks;
 }
 
 

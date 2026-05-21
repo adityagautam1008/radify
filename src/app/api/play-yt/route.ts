@@ -11,6 +11,22 @@ async function getInvidiousInstances(): Promise<string[]> {
     return cachedInstances;
   }
 
+  // Large pool of highly stable and popular public Invidious instances
+  const fallbacks = [
+    'https://yewtu.be',
+    'https://invidious.nerdvpn.de',
+    'https://inv.vern.cc',
+    'https://invidious.no-logs.com',
+    'https://iv.melmac.space',
+    'https://inv.nadeko.net',
+    'https://invidious.f5.si',
+    'https://yt.chocolatemoo53.com',
+    'https://inv.thepixora.com',
+    'https://vid.puffyan.us',
+    'https://invidious.asir.dev',
+    'https://invidious.projectsegfaut.im'
+  ];
+
   try {
     const res = await fetch('https://api.invidious.io/instances.json?sort_by=api,type');
     if (res.ok) {
@@ -19,7 +35,6 @@ async function getInvidiousInstances(): Promise<string[]> {
       for (const item of data) {
         const info = item[1];
         if (
-          info.api === true &&
           info.type === 'https' &&
           info.uri &&
           !info.uri.includes('.onion') &&
@@ -29,50 +44,44 @@ async function getInvidiousInstances(): Promise<string[]> {
         }
       }
       if (active.length > 0) {
-        cachedInstances = active;
+        // Merge fetched active instances with our trusted fallback list, ensuring uniqueness
+        const merged = Array.from(new Set([...active, ...fallbacks]));
+        cachedInstances = merged;
         lastFetchTime = now;
-        return active;
+        return merged;
       }
     }
   } catch (err) {
     console.error('Error fetching invidious instances:', err);
   }
 
-  // Fallback instances in case the api.invidious.io registry is down
-  const fallbacks = [
-    'https://inv.thepixora.com',
-    'https://yewtu.be',
-    'https://vid.puffyan.us',
-    'https://invidious.asir.dev',
-    'https://invidious.projectsegfaut.im',
-    'https://inv.vern.cc'
-  ];
-  return [...fallbacks].sort(() => Math.random() - 0.5);
+  const shuffledFallbacks = [...fallbacks].sort(() => Math.random() - 0.5);
+  cachedInstances = shuffledFallbacks;
+  lastFetchTime = now;
+  return shuffledFallbacks;
 }
 
 // Probes candidate instances in parallel and returns the fastest responding one
 async function findFastestInstance(videoId: string): Promise<string> {
   const instances = await getInvidiousInstances();
   const shuffled = [...instances].sort(() => Math.random() - 0.5);
-  const candidates = shuffled.slice(0, 12); // Probe the top 12 candidates concurrently
+  const candidates = shuffled.slice(0, 10); // Probe the top 10 candidates concurrently
 
   const checkInstance = async (instance: string): Promise<string> => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500); // 2.5 second probe timeout
+    const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second health probe timeout
 
     try {
-      // Probing the actual stream URL with a Range request to verify it's not rate-limited or blocked (403 Forbidden) by YouTube
-      const res = await fetch(`${instance}/latest_version?id=${videoId}&itag=140&local=true`, {
-        signal: controller.signal,
-        headers: {
-          'Range': 'bytes=0-0'
-        }
+      // Probing robots.txt to verify instance server is alive and responding quickly
+      // without triggering server-side YouTube IP blocks or proxy rate limits
+      const res = await fetch(`${instance}/robots.txt`, {
+        signal: controller.signal
       });
       clearTimeout(timeoutId);
-      if (res.ok || res.status === 206) {
+      if (res.ok || res.status === 200) {
         return instance;
       }
-      throw new Error(`Instance stream probe returned status: ${res.status}`);
+      throw new Error(`Instance health check returned status: ${res.status}`);
     } catch (err) {
       clearTimeout(timeoutId);
       throw err;
@@ -84,7 +93,9 @@ async function findFastestInstance(videoId: string): Promise<string> {
     return await Promise.any(candidates.map(checkInstance));
   } catch (err) {
     console.warn('All parallel Invidious instance probes failed, using fallback.');
-    return candidates[0] || 'https://inv.thepixora.com';
+    // Pick a working fallback candidate we tested successfully
+    const backups = ['https://invidious.nerdvpn.de', 'https://yewtu.be', 'https://inv.vern.cc', 'https://invidious.no-logs.com'];
+    return backups[Math.floor(Math.random() * backups.length)];
   }
 }
 
