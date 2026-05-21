@@ -31,18 +31,16 @@ async function getInvidiousInstances(): Promise<string[]> {
     return cachedInstances;
   }
 
-  // Large pool of highly stable and popular public Invidious instances
+  // Large pool of highly stable public Invidious instances
   const fallbacks = [
-    'https://yewtu.be',
-    'https://invidious.nerdvpn.de',
+    'https://inv.thepixora.com',
     'https://inv.vern.cc',
     'https://invidious.no-logs.com',
+    'https://yewtu.be',
     'https://iv.melmac.space',
     'https://inv.nadeko.net',
     'https://invidious.f5.si',
     'https://yt.chocolatemoo53.com',
-    'https://inv.thepixora.com',
-    'https://vid.puffyan.us',
     'https://invidious.asir.dev',
     'https://invidious.projectsegfaut.im'
   ];
@@ -81,43 +79,99 @@ async function getInvidiousInstances(): Promise<string[]> {
   return shuffledFallbacks;
 }
 
-// Probes candidate instances in parallel and returns the fastest responding one
+// Probes candidate instances in parallel using lightweight GET + Range probes
 async function findFastestInstance(videoId: string): Promise<string> {
   const instances = await getInvidiousInstances();
-  const shuffled = [...instances].sort(() => Math.random() - 0.5);
-  const candidates = shuffled.slice(0, 10); // Probe the top 10 candidates concurrently
+  
+  // Prioritize verified working instances that proxy streams
+  const preferred = [
+    'https://inv.thepixora.com',
+    'https://inv.vern.cc',
+    'https://invidious.no-logs.com'
+  ];
+  
+  const remaining = instances.filter(inst => !preferred.includes(inst));
+  const shuffledRemaining = [...remaining].sort(() => Math.random() - 0.5);
+  
+  // Create final list starting with preferred instances
+  const candidates = Array.from(new Set([...preferred, ...shuffledRemaining])).slice(0, 10);
+  console.log(`[play-yt] Probing top candidates:`, candidates);
 
   const checkInstance = async (instance: string): Promise<string> => {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500); // 2.5 second streaming HEAD probe timeout
+    let currentUrl = `${instance}/latest_version?id=${videoId}&itag=140&local=true`;
+    
+    // Manually follow redirects up to 5 levels to resolve the final direct media streaming URL
+    for (let i = 0; i < 5; i++) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500); // 3.5s timeout per step
 
-    try {
-      // Probing actual stream redirect URL to verify it resolves without 403 / 502 / 503 errors.
-      // We use HEAD method to only fetch headers and verify the stream is playable/accessible.
-      const res = await fetch(`${instance}/latest_version?id=${videoId}&itag=140&local=true`, {
-        method: 'HEAD',
-        signal: controller.signal,
-        redirect: 'manual' // We only want to see if the instance successfully returns a 200, 206, 302, 307 status
-      });
-      clearTimeout(timeoutId);
-      if (res.status === 200 || res.status === 206 || res.status === 302 || res.status === 307) {
-        return instance;
+      try {
+        const res = await fetch(currentUrl, {
+          method: 'GET',
+          redirect: 'manual',
+          signal: controller.signal,
+          headers: {
+            'Range': 'bytes=0-10', // Lightweight 11-byte probe
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          }
+        });
+        clearTimeout(timeoutId);
+
+        if (res.status === 301 || res.status === 302 || res.status === 307 || res.status === 308) {
+          const location = res.headers.get('location');
+          if (location) {
+            currentUrl = new URL(location, currentUrl).toString();
+            continue;
+          }
+        }
+
+        // Final URL reached. Verify it is a valid audio stream and not an HTML/JSON page
+        const contentType = res.headers.get('content-type') || '';
+        const status = res.status;
+        
+        if (status === 200 || status === 206) {
+          if (contentType.includes('text/html') || contentType.includes('application/json')) {
+            throw new Error('Instance returned HTML/JSON instead of audio data');
+          }
+          if (currentUrl.includes('googlevideo.com')) {
+            throw new Error('Instance redirected to googlevideo.com directly (unsupported for proxying on cloud IPs)');
+          }
+          console.log(`[play-yt] Successfully verified candidate ${instance} -> Resolved final URL: ${currentUrl}`);
+          return currentUrl; // Success! Return the fully resolved direct streaming companion URL
+        }
+        
+        throw new Error(`Instance returned invalid status: ${status}`);
+      } catch (err) {
+        clearTimeout(timeoutId);
+        throw err;
       }
-      throw new Error(`Instance streaming probe failed with status: ${res.status}`);
-    } catch (err) {
-      clearTimeout(timeoutId);
-      throw err;
     }
+    throw new Error('Too many redirects');
   };
 
   try {
     // Promise.any returns the first successfully resolved promise
     return await Promise.any(candidates.map(checkInstance));
   } catch (err) {
-    console.warn('All parallel Invidious streaming HEAD probes failed, using fallback.');
-    // Pick a working fallback candidate we tested successfully
-    const backups = ['https://invidious.nerdvpn.de', 'https://yewtu.be', 'https://inv.vern.cc', 'https://invidious.no-logs.com'];
-    return backups[Math.floor(Math.random() * backups.length)];
+    console.warn('All parallel Invidious streaming resolution probes failed, using direct manual fallback.');
+    
+    // Pick the most trusted instances one-by-one with a larger timeout and no racing
+    const fallbacks = [
+      'https://inv.thepixora.com',
+      'https://inv.vern.cc'
+    ];
+    
+    for (const fallbackInstance of fallbacks) {
+      try {
+        console.log(`[play-yt] Attempting direct manual fallback resolution for: ${fallbackInstance}`);
+        const resolvedUrl = await checkInstance(fallbackInstance);
+        return resolvedUrl;
+      } catch (fallbackErr) {
+        console.warn(`[play-yt] Direct manual fallback failed for ${fallbackInstance}:`, fallbackErr);
+      }
+    }
+    
+    throw new Error('All parallel probes and manual fallbacks failed to resolve a working stream.');
   }
 }
 
@@ -133,8 +187,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Video ID is required' }, { status: 400 });
   }
 
-  // Response helper to cleanly serve redirects or direct JSON payloads
-  const sendResponse = (streamUrl: string) => {
+  // Same-origin high-performance reverse stream proxy
+  const sendResponse = async (streamUrl: string) => {
     if (json) {
       return NextResponse.json({ streamUrl }, {
         headers: {
@@ -143,29 +197,90 @@ export async function GET(request: NextRequest) {
         }
       });
     }
-    return NextResponse.redirect(streamUrl, {
-      status: 307,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+
+    try {
+      const rangeHeader = request.headers.get('range');
+      const headersToSend = new Headers();
+      if (rangeHeader) {
+        headersToSend.set('range', rangeHeader);
       }
-    });
+      // Mimic browser user-agent to bypass basic rate-limiting
+      headersToSend.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+
+      let currentStreamUrl = streamUrl;
+      let streamRes: Response | null = null;
+      
+      // Manually follow redirects in the proxy stream to prevent Range header stripping
+      for (let redirectCount = 0; redirectCount < 5; redirectCount++) {
+        streamRes = await fetch(currentStreamUrl, {
+          headers: headersToSend,
+          method: 'GET',
+          redirect: 'manual'
+        });
+        
+        if (streamRes.status === 301 || streamRes.status === 302 || streamRes.status === 307 || streamRes.status === 308) {
+          const location = streamRes.headers.get('location');
+          if (location) {
+            currentStreamUrl = new URL(location, currentStreamUrl).toString();
+            console.log(`[play-yt] Proxy fetch followed redirect to: ${currentStreamUrl}`);
+            continue;
+          }
+        }
+        break;
+      }
+
+      if (!streamRes) {
+        throw new Error('Failed to fetch stream data');
+      }
+
+      // Forward correct headers back to the browser
+      const responseHeaders = new Headers();
+      responseHeaders.set('Content-Type', streamRes.headers.get('content-type') || 'audio/mpeg');
+      
+      if (streamRes.headers.has('content-range')) {
+        responseHeaders.set('Content-Range', streamRes.headers.get('content-range')!);
+      }
+      if (streamRes.headers.has('accept-ranges')) {
+        responseHeaders.set('Accept-Ranges', streamRes.headers.get('accept-ranges')!);
+      }
+      if (streamRes.headers.has('content-length')) {
+        responseHeaders.set('Content-Length', streamRes.headers.get('content-length')!);
+      }
+      
+      responseHeaders.set('Access-Control-Allow-Origin', '*');
+      responseHeaders.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+
+      const status = streamRes.status === 206 ? 206 : 200;
+      
+      return new NextResponse(streamRes.body, {
+        status,
+        headers: responseHeaders
+      });
+    } catch (proxyErr) {
+      console.error('[play-yt] Stream proxying failed, falling back to 307 redirect:', proxyErr);
+      return NextResponse.redirect(streamUrl, {
+        status: 307,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+        }
+      });
+    }
   };
 
   // 1. Check simple in-memory cache first to keep range/seeking pings consistent
   if (!nocache && resolvedCache.has(id)) {
     const cached = resolvedCache.get(id)!;
     console.log(`[play-yt] Serving cached stream URL for video ${id}`);
-    return sendResponse(cached.url);
+    return await sendResponse(cached.url);
   }
 
   // 2. Try Invidious streaming resolution
   try {
-    const instance = await findFastestInstance(id);
-    const streamUrl = `${instance}/latest_version?id=${id}&itag=140&local=true`;
-
+    const streamUrl = await findFastestInstance(id);
+    console.log(`[play-yt] Successfully resolved direct stream URL: ${streamUrl}`);
     resolvedCache.set(id, { url: streamUrl, timestamp: Date.now() });
-    return sendResponse(streamUrl);
+    return await sendResponse(streamUrl);
   } catch (error: any) {
     console.warn(`Invidious streaming resolution failed for video ${id}, attempting JioSaavn fallback...`, error);
 
@@ -183,7 +298,7 @@ export async function GET(request: NextRequest) {
           if (streamUrl) {
             console.log(`[play-yt] JioSaavn fallback SUCCESS for "${query}". Streaming URL: ${streamUrl}`);
             resolvedCache.set(id, { url: streamUrl, timestamp: Date.now() });
-            return sendResponse(streamUrl);
+            return await sendResponse(streamUrl);
           }
         }
       } catch (saavnErr) {
@@ -191,18 +306,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 4. Absolute Last Resort: Redirect to a random Invidious candidate directly
-    try {
-      const instances = await getInvidiousInstances();
-      const randomInstance = instances[Math.floor(Math.random() * instances.length)];
-      const streamUrl = `${randomInstance}/latest_version?id=${id}&itag=140&local=true`;
-      console.warn(`[play-yt] Fallback to random instance direct redirect: ${streamUrl}`);
-      
-      resolvedCache.set(id, { url: streamUrl, timestamp: Date.now() });
-      return sendResponse(streamUrl);
-    } catch (finalErr) {
-      console.error('All streaming resolution failovers failed:', finalErr);
-      return NextResponse.json({ error: 'Failed to stream audio' }, { status: 500 });
-    }
+    // 4. Absolute Last Resort: Fallback to a trusted working instance directly (inv.thepixora.com)
+    const fallbackInstanceUrl = `https://inv.thepixora.com/latest_version?id=${id}&itag=140&local=true`;
+    console.warn(`[play-yt] Fallback to trusted inv.thepixora.com instance: ${fallbackInstanceUrl}`);
+    resolvedCache.set(id, { url: fallbackInstanceUrl, timestamp: Date.now() });
+    return await sendResponse(fallbackInstanceUrl);
   }
 }
+

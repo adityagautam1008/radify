@@ -108,32 +108,16 @@ export default function AudioPlayer() {
         
         setIsBuffering(true);
         
-        // Resolve stream URL to a direct CDN/external URL client-side to ensure seamless seeking
-        (async () => {
-          let resolvedUrl = freshUrl;
-          try {
-            const res = await fetch(`${freshUrl}&json=true`);
-            if (res.ok) {
-              const data = await res.json();
-              if (data.streamUrl) {
-                resolvedUrl = data.streamUrl;
-                console.log(`[AudioPlayer] Recovered direct stream URL: ${resolvedUrl}`);
-              }
-            }
-          } catch (e) {
-            console.warn('[AudioPlayer] Client-side failover stream resolution failed, using fallback:', e);
-          }
-          
-          const currentState = usePlayerStore.getState();
-          if (currentState.currentSong?.id !== currentSongId) return;
-          
-          audio.src = resolvedUrl;
+        // Set audio source directly to the fresh proxy URL
+        const currentState = usePlayerStore.getState();
+        if (currentState.currentSong?.id === currentSongId) {
+          audio.src = freshUrl;
           audio.load();
           
           if (currentState.isPlaying) {
             audio.play().catch(() => {});
           }
-        })();
+        }
         
         if (typeof window !== 'undefined' && (window as any).__adifyTriggerToast) {
           (window as any).__adifyTriggerToast("Reconnecting stream...");
@@ -316,32 +300,12 @@ export default function AudioPlayer() {
           console.error('[AudioPlayer] Offline resolution check failed:', e);
         }
 
-        // Resolve play-yt redirect to direct stream URL client-side to ensure seeking works flawlessly
-        if (streamUrl && streamUrl.startsWith('/api/play-yt')) {
-          try {
-            console.log(`[AudioPlayer] Resolving direct stream URL for: ${currentSong.title}`);
-            const res = await fetch(`${streamUrl}&json=true`);
-            if (res.ok) {
-              const data = await res.json();
-              if (data.streamUrl) {
-                streamUrl = data.streamUrl;
-                console.log(`[AudioPlayer] Resolved direct stream URL: ${streamUrl}`);
-              }
-            }
-          } catch (e) {
-            console.warn('[AudioPlayer] Client-side stream resolution failed, using fallback redirect:', e);
-          }
-        }
-
         if (!active || loadToken !== songLoadTokenRef.current) {
           if (objectUrl) URL.revokeObjectURL(objectUrl);
           return;
         }
 
-        const canPlayStream = streamUrl && await verifyInternalStream(streamUrl);
-        if (!active || loadToken !== songLoadTokenRef.current) return;
-
-        if (!canPlayStream) {
+        if (!streamUrl) {
           console.error('[AudioPlayer] Stream URL is empty or invalid.');
           pause();
           setIsBuffering(false);
