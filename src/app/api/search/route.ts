@@ -44,21 +44,23 @@ export async function getInvidiousInstances(): Promise<string[]> {
   }
 
   // Stable fallbacks
-  return [
+  const fallbacks = [
     'https://inv.thepixora.com',
     'https://yewtu.be',
     'https://vid.puffyan.us',
   ];
+  return [...fallbacks].sort(() => Math.random() - 0.5);
 }
 
 
 
 async function searchInvidious(query: string): Promise<any[]> {
   const instances = await getInvidiousInstances();
-  const maxAttempts = Math.min(instances.length, 3);
+  const shuffled = [...instances].sort(() => Math.random() - 0.5);
+  const maxAttempts = Math.min(shuffled.length, 3);
 
   for (let i = 0; i < maxAttempts; i++) {
-    const instance = instances[i];
+    const instance = shuffled[i];
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 4000);

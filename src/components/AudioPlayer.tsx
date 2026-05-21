@@ -29,6 +29,8 @@ export default function AudioPlayer() {
   const seekLockRef = useRef(false);
   const skipAfterErrorRef = useRef<number | null>(null);
   const songLoadTokenRef = useRef(0);
+  const retryCountRef = useRef(0);
+  const restoreTimeRef = useRef<number | null>(null);
   
   const {
     currentSong,
@@ -58,8 +60,12 @@ export default function AudioPlayer() {
       setIsBuffering(false);
     };
     const handleEnded = () => {
+      if (audio.src.startsWith('data:')) {
+        console.log('[AudioPlayer] Suppressed ended event on silent transition WAV');
+        return;
+      }
       // Safely ensure the track actually played through to the end before triggering next()
-      const hasEndedProperly = audio.duration && audio.currentTime > 0 && Math.abs(audio.duration - audio.currentTime) < 2.5;
+      const hasEndedProperly = audio.duration && audio.duration > 10 && audio.currentTime > 0 && Math.abs(audio.duration - audio.currentTime) < 2.5;
       if (hasEndedProperly) {
         next();
       } else {
@@ -89,6 +95,30 @@ export default function AudioPlayer() {
         return;
       }
 
+      // Failover and recovery for YouTube songs
+      if (state.currentSong.source === 'youtube' && retryCountRef.current < 2) {
+        retryCountRef.current++;
+        const savedTime = audio.currentTime;
+        restoreTimeRef.current = savedTime;
+        console.log(`[AudioPlayer] Recovering YouTube stream. Attempt: ${retryCountRef.current}. Saved position: ${savedTime}`);
+        
+        const videoId = state.currentSong.id.replace('youtube-', '');
+        const freshUrl = `/api/play-yt?id=${videoId}&nocache=true&ts=${Date.now()}`;
+        
+        setIsBuffering(true);
+        audio.src = freshUrl;
+        audio.load();
+        
+        if (state.isPlaying) {
+          audio.play().catch(() => {});
+        }
+        
+        if (typeof window !== 'undefined' && (window as any).__adifyTriggerToast) {
+          (window as any).__adifyTriggerToast("Reconnecting stream...");
+        }
+        return;
+      }
+
       console.error('[AudioPlayer] Legitimate stream error. Pausing playback.');
       pause();
       
@@ -105,6 +135,14 @@ export default function AudioPlayer() {
 
     const handleLoadedMetadata = () => {
       setDuration(audio.duration);
+      if (restoreTimeRef.current !== null && !isNaN(restoreTimeRef.current)) {
+        try {
+          audio.currentTime = restoreTimeRef.current;
+          restoreTimeRef.current = null;
+        } catch (e) {
+          console.warn('[AudioPlayer] Error restoring time in metadata:', e);
+        }
+      }
     };
 
     // canplaythrough fires when browser estimates smooth playback
@@ -212,6 +250,9 @@ export default function AudioPlayer() {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
+
+    retryCountRef.current = 0;
+    restoreTimeRef.current = null;
 
     let active = true;
     let objectUrl: string | null = null;
@@ -372,6 +413,11 @@ export default function AudioPlayer() {
         const state = usePlayerStore.getState();
         if (state.currentSong) {
           state.toggleLike(state.currentSong);
+          const updatedState = usePlayerStore.getState();
+          const isLikedNow = updatedState.likedSongs.some(s => s.id === state.currentSong?.id);
+          if (typeof window !== 'undefined' && (window as any).__adifyTriggerToast) {
+            (window as any).__adifyTriggerToast(isLikedNow ? "Added to Liked Songs ❤️" : "Removed from Liked Songs");
+          }
         }
       }],
       ['dislike', () => {

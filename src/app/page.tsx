@@ -6,7 +6,8 @@ import {
   Volume2, VolumeX, Download, Disc, Sparkles, Music, Loader2, Shuffle, Timer, X,
   Plus, Trash2, Clock, ListMusic, Layers, GripVertical, Settings,
   ChevronUp, ChevronDown, Mic, Share2, Palette, Bot, Radio, AlertTriangle, Zap,
-  Folder, FolderOpen, FileText, FileAudio, FileCode, CheckCircle, File as FileIcon
+  Folder, FolderOpen, FileText, FileAudio, FileCode, CheckCircle, File as FileIcon,
+  ChevronsUpDown
 } from "lucide-react";
 import { usePlayerStore, Song } from '@/store/playerStore';
 import AudioPlayer from '@/components/AudioPlayer';
@@ -2061,7 +2062,7 @@ export default function AppHome() {
                   </div>
                 </div>
                 <div className="absolute right-0 bottom-0 opacity-10 translate-x-12 translate-y-12 shrink-0 pointer-events-none">
-                  <Disc size={280} className="animate-spin-slow" />
+                  <img src="/logo.jpg" alt="" className="w-[280px] h-[280px] rounded-full object-cover animate-spin-slow" />
                 </div>
               </div>
 
@@ -3655,7 +3656,7 @@ export default function AppHome() {
             className="h-[72px] md:h-[95px] bg-zinc-950 border-t border-zinc-900 fixed bottom-0 w-full px-4 flex items-center justify-between z-50 shadow-2xl transition-all duration-300 cursor-pointer md:cursor-default select-none"
           >
             {/* Interactive progress bar for mobile */}
-            <div className="absolute top-0 left-0 right-0 h-[6px] md:hidden z-30" onClick={(e) => e.stopPropagation()}>
+            <div className="absolute -top-[10px] left-0 right-0 h-[20px] flex items-center md:hidden z-30" onClick={(e) => e.stopPropagation()}>
               <input 
                 type="range"
                 min="0"
@@ -3667,7 +3668,7 @@ export default function AppHome() {
                 onChange={(e) => { e.stopPropagation(); handleSeekChange(e); }}
                 onMouseUp={(e) => { e.stopPropagation(); handleSeekEnd(); }}
                 onTouchEnd={(e) => { e.stopPropagation(); handleSeekEnd(); }}
-                className="absolute top-0 left-0 right-0 w-full h-full appearance-none bg-zinc-800/40 cursor-pointer focus:outline-none z-30 opacity-90"
+                className="w-full h-[6px] appearance-none bg-zinc-800/40 rounded-full cursor-pointer focus:outline-none z-30 opacity-90"
                 style={{
                   background: `linear-gradient(to right, ${
                     theme === 'emerald' ? '#22c55e' : theme === 'sunset' ? '#f97316' : theme === 'cyberpunk' ? '#ec4899' : theme === 'ocean' ? '#06b6d4' : '#8b5cf6'
@@ -3882,6 +3883,15 @@ export default function AppHome() {
                 <Layers size={18} />
               </button>
 
+              {/* Mobile Volume Mute Toggle */}
+              <button 
+                onClick={(e) => { e.stopPropagation(); setVolume(volume === 0 ? 0.8 : 0); }}
+                className="text-zinc-400 hover:text-white p-2 transition md:hidden"
+                title="Toggle Mute"
+              >
+                {volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
+              </button>
+
               {/* Desktop-only utilities & volume */}
               <button
                 onClick={(e) => { e.stopPropagation(); handleShare(currentSong.title, `Listening to ${currentSong.title} by ${currentSong.artist} on ADIFY.`); }}
@@ -4005,7 +4015,7 @@ export default function AppHome() {
 
                   {/* Seek Bar / Slider Control */}
                   <div className="space-y-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center h-[20px] w-full">
                       <input 
                         type="range"
                         min="0"
@@ -4017,7 +4027,7 @@ export default function AppHome() {
                         onChange={handleSeekChange}
                         onMouseUp={handleSeekEnd}
                         onTouchEnd={handleSeekEnd}
-                        className={`h-2 rounded-full flex-1 appearance-none cursor-pointer focus:outline-none bg-zinc-850 accent-${
+                        className={`h-[6px] rounded-full w-full appearance-none cursor-pointer focus:outline-none bg-zinc-850 accent-${
                           theme === 'emerald' ? 'green' : theme === 'sunset' ? 'orange' : theme === 'cyberpunk' ? 'pink' : theme === 'ocean' ? 'cyan' : 'violet'
                         }-500`}
                         style={{ background: `linear-gradient(to right, ${theme === 'emerald' ? '#22c55e' : theme === 'sunset' ? '#f97316' : theme === 'cyberpunk' ? '#ec4899' : theme === 'ocean' ? '#06b6d4' : '#8b5cf6'} ${((isSeeking ? tempSeekTime : currentTime) / (duration || 100)) * 100}%, #27272a ${((isSeeking ? tempSeekTime : currentTime) / (duration || 100)) * 100}%)` }}
@@ -4204,14 +4214,27 @@ export default function AppHome() {
                           return (
                             <div
                               key={`${song.id}-mobile-queue-${idx}`}
+                              draggable
+                              onDragStart={(e) => { e.dataTransfer.setData('text/plain', String(idx)); }}
+                              onDragOver={(e) => { e.preventDefault(); }}
+                              onDrop={(e) => {
+                                const fromIndex = Number(e.dataTransfer.getData('text/plain'));
+                                if (!isNaN(fromIndex) && fromIndex !== idx) {
+                                  moveQueueSong(fromIndex, idx);
+                                  triggerToast('↕️ Queue reordered');
+                                }
+                              }}
                               onClick={() => {
                                 if (!isCurrent) {
                                   setSong(song, queue);
                                   triggerToast(`🎵 Playing "${song.title}"`);
                                 }
                               }}
-                              className={`flex items-center gap-3 p-2 rounded-lg transition min-w-0 ${activeBorderClass} ${isCurrent ? 'cursor-default' : 'cursor-pointer hover:bg-zinc-900/40 active:bg-zinc-900/70'}`}
+                              className={`flex items-center gap-2 p-2 rounded-lg transition min-w-0 ${activeBorderClass} ${isCurrent ? 'cursor-default' : 'cursor-pointer hover:bg-zinc-900/40 active:bg-zinc-900/70'}`}
                             >
+                              {/* Grip handle */}
+                              <GripVertical size={14} className="text-zinc-500 cursor-grab flex-shrink-0" />
+
                               {/* Album thumbnail */}
                               <div className="w-10 h-10 rounded bg-zinc-800 flex-shrink-0 overflow-hidden relative flex items-center justify-center border border-zinc-700/30">
                                 {song.image ? (
@@ -4240,6 +4263,25 @@ export default function AppHome() {
 
                               {/* Reordering and Shifting Action Buttons */}
                               <div className="flex items-center gap-1.5 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                                {/* Move to Position */}
+                                <button
+                                  onClick={() => {
+                                    const targetPosStr = prompt(`Move "${song.title}" to position (1 to ${queue.length}):`, String(idx + 1));
+                                    if (targetPosStr === null) return;
+                                    const targetPos = parseInt(targetPosStr, 10);
+                                    if (isNaN(targetPos) || targetPos < 1 || targetPos > queue.length) {
+                                      triggerToast("❌ Invalid position");
+                                      return;
+                                    }
+                                    moveQueueSong(idx, targetPos - 1);
+                                    triggerToast(`↕️ Shifted "${song.title}" to position ${targetPos}`);
+                                  }}
+                                  className="w-7 h-7 bg-zinc-900 border border-zinc-800 rounded-full flex items-center justify-center text-zinc-400 active:text-white transition active:scale-90"
+                                  title="Move to Position"
+                                >
+                                  <ChevronsUpDown size={12} />
+                                </button>
+
                                 {/* Move Up */}
                                 {idx > 0 && (
                                   <button

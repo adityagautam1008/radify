@@ -39,7 +39,7 @@ async function getInvidiousInstances(): Promise<string[]> {
   }
 
   // Fallback instances in case the api.invidious.io registry is down
-  return [
+  const fallbacks = [
     'https://inv.thepixora.com',
     'https://yewtu.be',
     'https://vid.puffyan.us',
@@ -47,12 +47,14 @@ async function getInvidiousInstances(): Promise<string[]> {
     'https://invidious.projectsegfaut.im',
     'https://inv.vern.cc'
   ];
+  return [...fallbacks].sort(() => Math.random() - 0.5);
 }
 
 // Probes candidate instances in parallel and returns the fastest responding one
 async function findFastestInstance(videoId: string): Promise<string> {
   const instances = await getInvidiousInstances();
-  const candidates = instances.slice(0, 12); // Probe the top 12 candidates concurrently
+  const shuffled = [...instances].sort(() => Math.random() - 0.5);
+  const candidates = shuffled.slice(0, 12); // Probe the top 12 candidates concurrently
 
   const checkInstance = async (instance: string): Promise<string> => {
     const controller = new AbortController();
