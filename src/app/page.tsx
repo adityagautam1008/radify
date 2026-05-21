@@ -3563,25 +3563,33 @@ export default function AppHome() {
 
       {/* Bottom Player Bar */}
       {currentSong && (
-        <footer className="h-[95px] bg-zinc-950 border-t border-zinc-900 fixed bottom-0 w-full px-4 flex items-center justify-between z-50 shadow-2xl">
+        <footer className="h-[72px] md:h-[95px] bg-zinc-950 border-t border-zinc-900 fixed bottom-0 w-full px-4 flex items-center justify-between z-50 shadow-2xl transition-all duration-300">
+          {/* Tiny top progress bar for mobile */}
+          <div className="absolute top-0 left-0 right-0 h-[2px] bg-zinc-800/80 md:hidden overflow-hidden">
+            <div 
+              className="h-full bg-green-500 transition-all duration-100 ease-out" 
+              style={{ width: `${(currentTime / (duration || 100)) * 100}%` }}
+            />
+          </div>
+
           {/* Left: Song Info */}
-          <div className="flex items-center gap-4 w-1/3 min-w-[180px]">
-            <div className="w-14 h-14 bg-zinc-800 rounded shadow-md overflow-hidden relative group">
+          <div className="flex items-center gap-3 flex-1 md:flex-initial md:w-1/3 min-w-0">
+            <div className="w-12 h-12 md:w-14 md:h-14 bg-zinc-800 rounded shadow-md overflow-hidden relative flex-shrink-0">
               {currentSong.image ? (
                 <img src={currentSong.image} alt={currentSong.title} decoding="async" className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
-                  <Music size={24} />
+                  <Music className="size-5 md:size-6 text-zinc-400" />
                 </div>
               )}
             </div>
-            <div className="min-w-0">
-              <div className="text-sm font-bold text-white hover:underline cursor-pointer truncate">{currentSong.title}</div>
-              <div className="text-xs text-zinc-400 hover:underline cursor-pointer truncate">{currentSong.artist}</div>
+            <div className="min-w-0 flex-1">
+              <div className="text-xs md:text-sm font-bold text-white hover:underline cursor-pointer truncate">{currentSong.title}</div>
+              <div className="text-[10px] md:text-xs text-zinc-400 hover:underline cursor-pointer truncate">{currentSong.artist}</div>
             </div>
             <button 
               onClick={() => toggleLike(currentSong)} 
-              className="text-zinc-400 hover:text-white transition ml-4"
+              className="text-zinc-400 hover:text-white transition flex-shrink-0 ml-2"
             >
               <Heart 
                 size={18} 
@@ -3598,8 +3606,8 @@ export default function AppHome() {
             </button>
           </div>
           
-          {/* Center: Controls & Slider */}
-          <div className="flex flex-col items-center w-1/3 max-w-[722px] px-4">
+          {/* Center: Controls & Slider (Desktop Only) */}
+          <div className="hidden md:flex flex-col items-center w-1/3 max-w-[722px] px-4">
             <div className="flex items-center gap-5 mb-2">
               {/* Shuffle Button */}
               <button 
@@ -3703,32 +3711,55 @@ export default function AppHome() {
             </div>
           </div>
           
-          {/* Right: Volume */}
-          <div className="w-1/3 flex justify-end items-center gap-3 min-w-[180px]">
+          {/* Right: Controls (Mobile) & Volume/Utilities (Desktop) */}
+          <div className="flex items-center gap-1 md:gap-3 flex-shrink-0">
+            {/* Mobile Playback Controls - visible only on phone layout */}
+            <div className="flex items-center gap-1 md:hidden mr-1">
+              <button onClick={prev} className="text-zinc-400 hover:text-white p-2 transition">
+                <SkipBack size={18} />
+              </button>
+              <button 
+                onClick={isPlaying ? pause : play}
+                className="w-9 h-9 bg-white rounded-full flex items-center justify-center text-black hover:scale-105 transition shadow-md flex-shrink-0"
+              >
+                {isPlaying ? (
+                  <Pause size={16} fill="currentColor" />
+                ) : (
+                  <Play size={16} fill="currentColor" className="ml-0.5" />
+                )}
+              </button>
+              <button onClick={next} className="text-zinc-400 hover:text-white p-2 transition">
+                <SkipForward size={18} />
+              </button>
+            </div>
+
+            {/* Lyrics Panel Toggle */}
             <button
               onClick={() => setShowLyrics(true)}
-              className={`text-zinc-400 hover:text-white transition ${showLyrics ? 'text-green-500' : ''}`}
+              className={`text-zinc-400 hover:text-white p-2 transition ${showLyrics ? 'text-green-500' : ''}`}
               title="Lyrics"
             >
               <Layers size={18} />
             </button>
+
+            {/* Desktop-only utilities & volume */}
             <button
               onClick={() => handleShare(currentSong.title, `Listening to ${currentSong.title} by ${currentSong.artist} on ADIFY.`)}
-              className="text-zinc-400 hover:text-white transition hidden sm:block"
+              className="text-zinc-400 hover:text-white p-2 transition hidden sm:block"
               title="Share Song"
             >
               <Share2 size={18} />
             </button>
             <button
               onClick={startVoiceAssistant}
-              className={`text-zinc-400 hover:text-white transition hidden sm:block ${isListeningVoice ? 'text-red-400 animate-pulse' : ''}`}
+              className={`text-zinc-400 hover:text-white p-2 transition hidden sm:block ${isListeningVoice ? 'text-red-400 animate-pulse' : ''}`}
               title={isListeningVoice ? voiceCommandText : 'Voice Assistant'}
             >
               <Mic size={18} />
             </button>
             <button 
               onClick={() => setVolume(volume === 0 ? 0.8 : 0)}
-              className="text-zinc-400 hover:text-white transition"
+              className="text-zinc-400 hover:text-white p-2 transition hidden md:block"
             >
               {volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
             </button>
@@ -3739,7 +3770,7 @@ export default function AppHome() {
               step="0.01"
               value={volume}
               onChange={(e) => setVolume(Number(e.target.value))}
-              className="h-1 bg-zinc-800 rounded-full w-24 appearance-none cursor-pointer accent-green-500 hover:accent-green-400 focus:outline-none"
+              className="h-1 bg-zinc-800 rounded-full w-24 appearance-none cursor-pointer accent-green-500 hover:accent-green-400 focus:outline-none hidden md:block"
             />
           </div>
         </footer>

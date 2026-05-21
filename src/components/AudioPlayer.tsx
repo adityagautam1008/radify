@@ -92,17 +92,10 @@ export default function AudioPlayer() {
   };
 
   const verifyInternalStream = async (url: string) => {
-    if (!url.startsWith('/api/play-yt')) return true;
-
-    try {
-      const response = await fetch(url, {
-        headers: { Range: 'bytes=0-1' },
-      });
-      const contentType = response.headers.get('content-type') || '';
-      return response.ok && contentType.startsWith('audio/');
-    } catch {
-      return false;
-    }
+    // Return true immediately. Browser HTML5 audio tags follow redirects and load streams natively.
+    // Performing a client-side fetch() to `/api/play-yt` triggers cross-origin CORS checks when
+    // redirected to an external Invidious instance, which causes playback to fail prematurely.
+    return true;
   };
 
   // Handle Song Change
