@@ -123,11 +123,118 @@ async function searchYtDlp(query: string): Promise<any[]> {
   }
 }
 
+function parseYoutubeDuration(durationStr: string): number {
+  if (!durationStr) return 0;
+  const parts = durationStr.split(':').map(Number);
+  if (parts.some(isNaN)) return 0;
+  if (parts.length === 2) {
+    return parts[0] * 60 + parts[1];
+  } else if (parts.length === 3) {
+    return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  }
+  return parts[0] || 0;
+}
+
+function extractVideosFromJson(jsonData: any): any[] {
+  try {
+    const sectionList = jsonData?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents;
+    if (!Array.isArray(sectionList)) return [];
+
+    let videoItems: any[] = [];
+    for (const section of sectionList) {
+      const itemSection = section?.itemSectionRenderer?.contents;
+      if (Array.isArray(itemSection)) {
+        videoItems = itemSection;
+        break;
+      }
+    }
+
+    if (videoItems.length === 0) return [];
+
+    const results: any[] = [];
+    for (const item of videoItems) {
+      const video = item?.videoRenderer;
+      if (!video || !video.videoId) continue;
+
+      const title = video.title?.runs?.[0]?.text || video.title?.accessibility?.accessibilityData?.label || 'Unknown';
+      const artist = video.ownerText?.runs?.[0]?.text || video.shortBylineText?.runs?.[0]?.text || 'Unknown Artist';
+      const published = video.publishedTimeText?.simpleText || '';
+      const durationStr = video.lengthText?.simpleText || '';
+      const duration = parseYoutubeDuration(durationStr);
+
+      results.push({
+        id: `youtube-${video.videoId}`,
+        title,
+        album: 'Global Stream',
+        year: published,
+        duration,
+        artist,
+        image: `https://img.youtube.com/vi/${video.videoId}/hqdefault.jpg`,
+        streamUrl: `/api/play-yt?id=${video.videoId}`,
+        source: 'youtube'
+      });
+    }
+
+    return results;
+  } catch (e) {
+    console.error('Error parsing YouTube JSON:', e);
+    return [];
+  }
+}
+
+async function scrapeYoutubeSearch(query: string): Promise<any[]> {
+  try {
+    // sp=EgIQAQ%253D%253D filters for videos only to exclude channels/playlists
+    const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&sp=EgIQAQ%253D%253D`;
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`YouTube HTML request failed with status ${response.status}`);
+    }
+
+    const html = await response.text();
+    
+    // Look for var ytInitialData = {...};
+    const match = html.match(/var ytInitialData\s*=\s*({.*?});/);
+    if (match && match[1]) {
+      return extractVideosFromJson(JSON.parse(match[1]));
+    }
+
+    // Alternative match on window.ytInitialData
+    const altMatch = html.match(/ytInitialData\s*=\s*({.*?});/);
+    if (altMatch && altMatch[1]) {
+      return extractVideosFromJson(JSON.parse(altMatch[1]));
+    }
+
+    throw new Error('ytInitialData JSON payload not found in YouTube page source');
+  } catch (error) {
+    console.error('YouTube direct scraping failed:', error);
+    return [];
+  }
+}
+
 async function searchYouTube(query: string): Promise<any[]> {
+  // 1. Try direct high-speed HTML scraping first (extremely robust, avoids rate limits & external API dependencies)
+  console.log(`Starting direct YouTube HTML search for "${query}"...`);
+  const scrapeResults = await scrapeYoutubeSearch(query);
+  if (scrapeResults.length > 0) {
+    console.log(`YouTube scraper successfully fetched ${scrapeResults.length} videos!`);
+    return scrapeResults;
+  }
+
+  // 2. Fallback: Try Invidious public instances search
+  console.log('YouTube scraper returned no results, falling back to Invidious instances...');
   const invResults = await searchInvidious(query);
   if (invResults.length > 0) return invResults;
 
-  console.log('Invidious search returned no results, falling back to yt-dlp...');
+  // 3. Fallback: Try yt-dlp locally (great for offline localhost development)
+  console.log('Invidious search returned no results, falling back to local yt-dlp...');
   return searchYtDlp(query);
 }
 
