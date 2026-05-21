@@ -62,7 +62,6 @@ async function getInvidiousInstances(): Promise<string[]> {
         }
       }
       if (active.length > 0) {
-        // Merge fetched active instances with our trusted fallback list, ensuring uniqueness
         const merged = Array.from(new Set([...active, ...fallbacks]));
         cachedInstances = merged;
         lastFetchTime = now;
@@ -79,102 +78,6 @@ async function getInvidiousInstances(): Promise<string[]> {
   return shuffledFallbacks;
 }
 
-// Probes candidate instances in parallel using lightweight GET + Range probes
-async function findFastestInstance(videoId: string): Promise<string> {
-  const instances = await getInvidiousInstances();
-  
-  // Prioritize verified working instances that proxy streams
-  const preferred = [
-    'https://inv.thepixora.com',
-    'https://inv.vern.cc',
-    'https://invidious.no-logs.com'
-  ];
-  
-  const remaining = instances.filter(inst => !preferred.includes(inst));
-  const shuffledRemaining = [...remaining].sort(() => Math.random() - 0.5);
-  
-  // Create final list starting with preferred instances
-  const candidates = Array.from(new Set([...preferred, ...shuffledRemaining])).slice(0, 10);
-  console.log(`[play-yt] Probing top candidates:`, candidates);
-
-  const checkInstance = async (instance: string): Promise<string> => {
-    let currentUrl = `${instance}/latest_version?id=${videoId}&itag=140&local=true`;
-    
-    // Manually follow redirects up to 5 levels to resolve the final direct media streaming URL
-    for (let i = 0; i < 5; i++) {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500); // 3.5s timeout per step
-
-      try {
-        const res = await fetch(currentUrl, {
-          method: 'GET',
-          redirect: 'manual',
-          signal: controller.signal,
-          headers: {
-            'Range': 'bytes=0-10', // Lightweight 11-byte probe
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-          }
-        });
-        clearTimeout(timeoutId);
-
-        if (res.status === 301 || res.status === 302 || res.status === 307 || res.status === 308) {
-          const location = res.headers.get('location');
-          if (location) {
-            currentUrl = new URL(location, currentUrl).toString();
-            continue;
-          }
-        }
-
-        // Final URL reached. Verify it is a valid audio stream and not an HTML/JSON page
-        const contentType = res.headers.get('content-type') || '';
-        const status = res.status;
-        
-        if (status === 200 || status === 206) {
-          if (contentType.includes('text/html') || contentType.includes('application/json')) {
-            throw new Error('Instance returned HTML/JSON instead of audio data');
-          }
-          if (currentUrl.includes('googlevideo.com')) {
-            throw new Error('Instance redirected to googlevideo.com directly (unsupported for proxying on cloud IPs)');
-          }
-          console.log(`[play-yt] Successfully verified candidate ${instance} -> Resolved final URL: ${currentUrl}`);
-          return currentUrl; // Success! Return the fully resolved direct streaming companion URL
-        }
-        
-        throw new Error(`Instance returned invalid status: ${status}`);
-      } catch (err) {
-        clearTimeout(timeoutId);
-        throw err;
-      }
-    }
-    throw new Error('Too many redirects');
-  };
-
-  try {
-    // Promise.any returns the first successfully resolved promise
-    return await Promise.any(candidates.map(checkInstance));
-  } catch (err) {
-    console.warn('All parallel Invidious streaming resolution probes failed, using direct manual fallback.');
-    
-    // Pick the most trusted instances one-by-one with a larger timeout and no racing
-    const fallbacks = [
-      'https://inv.thepixora.com',
-      'https://inv.vern.cc'
-    ];
-    
-    for (const fallbackInstance of fallbacks) {
-      try {
-        console.log(`[play-yt] Attempting direct manual fallback resolution for: ${fallbackInstance}`);
-        const resolvedUrl = await checkInstance(fallbackInstance);
-        return resolvedUrl;
-      } catch (fallbackErr) {
-        console.warn(`[play-yt] Direct manual fallback failed for ${fallbackInstance}:`, fallbackErr);
-      }
-    }
-    
-    throw new Error('All parallel probes and manual fallbacks failed to resolve a working stream.');
-  }
-}
-
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
@@ -187,130 +90,214 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Video ID is required' }, { status: 400 });
   }
 
-  // Same-origin high-performance reverse stream proxy
-  const sendResponse = async (streamUrl: string) => {
-    if (json) {
-      return NextResponse.json({ streamUrl }, {
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
-        }
-      });
-    }
+  const rangeHeader = request.headers.get('range');
+  const headersToSend = new Headers();
+  if (rangeHeader) {
+    headersToSend.set('range', rangeHeader);
+  }
+  headersToSend.set(
+    'User-Agent',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+  );
 
+  // Build the pool of target URLs to attempt proxying from
+  const urlsToTry: string[] = [];
+
+  // 1. If we have a cached stream URL, prioritize attempting to seek/load from it
+  if (!nocache && resolvedCache.has(id)) {
+    urlsToTry.push(resolvedCache.get(id)!.url);
+  }
+
+  // 2. Add candidates (/latest_version URLs) from active Invidious instances
+  const instances = await getInvidiousInstances();
+  const preferred = [
+    'https://inv.thepixora.com',
+    'https://inv.vern.cc',
+    'https://invidious.no-logs.com',
+    'https://invidious.f5.si'
+  ];
+  const remaining = instances.filter((inst) => !preferred.includes(inst));
+  const shuffledRemaining = [...remaining].sort(() => Math.random() - 0.5);
+  const candidates = Array.from(new Set([...preferred, ...shuffledRemaining])).slice(0, 8);
+
+  for (const inst of candidates) {
+    urlsToTry.push(`${inst}/latest_version?id=${id}&itag=140&local=true`);
+  }
+
+  let streamRes: Response | null = null;
+  let finalStreamUrl = '';
+
+  // Self-healing proxy loop
+  for (const targetUrl of urlsToTry) {
     try {
-      const rangeHeader = request.headers.get('range');
-      const headersToSend = new Headers();
-      if (rangeHeader) {
-        headersToSend.set('range', rangeHeader);
-      }
-      // Mimic browser user-agent to bypass basic rate-limiting
-      headersToSend.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+      console.log(`[play-yt] Attempting proxy stream from: ${targetUrl}`);
+      let currentUrl = targetUrl;
+      let res: Response | null = null;
+      let redirectedToGooglevideo = false;
 
-      let currentStreamUrl = streamUrl;
-      let streamRes: Response | null = null;
-      
-      // Manually follow redirects in the proxy stream to prevent Range header stripping
+      // Follow redirects manually up to 5 levels to prevent browser cross-origin Range stripping
       for (let redirectCount = 0; redirectCount < 5; redirectCount++) {
-        streamRes = await fetch(currentStreamUrl, {
+        if (currentUrl.includes('googlevideo.com')) {
+          console.warn(`[play-yt] Redirect led directly to googlevideo.com. Rejecting this stream instance.`);
+          redirectedToGooglevideo = true;
+          break;
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000); // 4s timeout per redirect hop
+
+        res = await fetch(currentUrl, {
           headers: headersToSend,
           method: 'GET',
-          redirect: 'manual'
+          redirect: 'manual',
+          signal: controller.signal
         });
-        
-        if (streamRes.status === 301 || streamRes.status === 302 || streamRes.status === 307 || streamRes.status === 308) {
-          const location = streamRes.headers.get('location');
+        clearTimeout(timeoutId);
+
+        if (res.status === 301 || res.status === 302 || res.status === 307 || res.status === 308) {
+          const location = res.headers.get('location');
           if (location) {
-            currentStreamUrl = new URL(location, currentStreamUrl).toString();
-            console.log(`[play-yt] Proxy fetch followed redirect to: ${currentStreamUrl}`);
+            currentUrl = new URL(location, currentUrl).toString();
+            console.log(`[play-yt] Proxy followed redirect to: ${currentUrl}`);
             continue;
           }
         }
         break;
       }
 
-      if (!streamRes) {
-        throw new Error('Failed to fetch stream data');
+      if (redirectedToGooglevideo || !res) {
+        continue;
       }
 
-      // Forward correct headers back to the browser
-      const responseHeaders = new Headers();
-      responseHeaders.set('Content-Type', streamRes.headers.get('content-type') || 'audio/mpeg');
-      
-      if (streamRes.headers.has('content-range')) {
-        responseHeaders.set('Content-Range', streamRes.headers.get('content-range')!);
-      }
-      if (streamRes.headers.has('accept-ranges')) {
-        responseHeaders.set('Accept-Ranges', streamRes.headers.get('accept-ranges')!);
-      }
-      if (streamRes.headers.has('content-length')) {
-        responseHeaders.set('Content-Length', streamRes.headers.get('content-length')!);
-      }
-      
-      responseHeaders.set('Access-Control-Allow-Origin', '*');
-      responseHeaders.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+      const contentType = res.headers.get('content-type') || '';
+      const status = res.status;
 
-      const status = streamRes.status === 206 ? 206 : 200;
-      
-      return new NextResponse(streamRes.body, {
-        status,
-        headers: responseHeaders
-      });
-    } catch (proxyErr) {
-      console.error('[play-yt] Stream proxying failed, falling back to 307 redirect:', proxyErr);
-      return NextResponse.redirect(streamUrl, {
-        status: 307,
+      // We only accept valid 200/206 audio stream payloads. HTML/JSON implies a block or landing page.
+      if (status === 200 || status === 206) {
+        if (contentType.includes('text/html') || contentType.includes('application/json')) {
+          console.warn(`[play-yt] Instance returned HTML/JSON instead of audio: ${contentType}`);
+          continue;
+        }
+
+        streamRes = res;
+        finalStreamUrl = currentUrl;
+        console.log(`[play-yt] SUCCESS! Proxy stream established from ${currentUrl} (Status: ${status})`);
+        break;
+      } else {
+        console.warn(`[play-yt] Instance returned invalid status code: ${status}`);
+      }
+    } catch (err: any) {
+      console.warn(`[play-yt] Failed fetching stream from ${targetUrl}:`, err.message || err);
+    }
+  }
+
+  // If a working Invidious stream was established, pipe it back to the client
+  if (streamRes && finalStreamUrl) {
+    resolvedCache.set(id, { url: finalStreamUrl, timestamp: Date.now() });
+
+    if (json) {
+      return NextResponse.json({ streamUrl: finalStreamUrl }, {
         headers: {
           'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0'
         }
       });
     }
-  };
 
-  // 1. Check simple in-memory cache first to keep range/seeking pings consistent
-  if (!nocache && resolvedCache.has(id)) {
-    const cached = resolvedCache.get(id)!;
-    console.log(`[play-yt] Serving cached stream URL for video ${id}`);
-    return await sendResponse(cached.url);
-  }
+    const responseHeaders = new Headers();
+    responseHeaders.set('Content-Type', streamRes.headers.get('content-type') || 'audio/mpeg');
 
-  // 2. Try Invidious streaming resolution
-  try {
-    const streamUrl = await findFastestInstance(id);
-    console.log(`[play-yt] Successfully resolved direct stream URL: ${streamUrl}`);
-    resolvedCache.set(id, { url: streamUrl, timestamp: Date.now() });
-    return await sendResponse(streamUrl);
-  } catch (error: any) {
-    console.warn(`Invidious streaming resolution failed for video ${id}, attempting JioSaavn fallback...`, error);
-
-    // 3. Fallback to JioSaavn stream if title/artist are available
-    if (title) {
-      try {
-        const query = artist ? `${title} ${artist}` : title;
-        console.log(`[play-yt] Searching JioSaavn fallback for "${query}"`);
-        const fallbackSongs = await fetchSaavnSongsWithFallback(query, 3);
-        
-        if (fallbackSongs && fallbackSongs.length > 0) {
-          const fallbackSong = fallbackSongs[0];
-          const streamUrl = fallbackSong.streamUrl_high || fallbackSong.streamUrl || fallbackSong.streamUrl_med || fallbackSong.streamUrl_low;
-          
-          if (streamUrl) {
-            console.log(`[play-yt] JioSaavn fallback SUCCESS for "${query}". Streaming URL: ${streamUrl}`);
-            resolvedCache.set(id, { url: streamUrl, timestamp: Date.now() });
-            return await sendResponse(streamUrl);
-          }
-        }
-      } catch (saavnErr) {
-        console.error('[play-yt] JioSaavn fallback search failed:', saavnErr);
-      }
+    if (streamRes.headers.has('content-range')) {
+      responseHeaders.set('Content-Range', streamRes.headers.get('content-range')!);
+    }
+    if (streamRes.headers.has('accept-ranges')) {
+      responseHeaders.set('Accept-Ranges', streamRes.headers.get('accept-ranges')!);
+    }
+    if (streamRes.headers.has('content-length')) {
+      responseHeaders.set('Content-Length', streamRes.headers.get('content-length')!);
     }
 
-    // 4. Absolute Last Resort: Fallback to a trusted working instance directly (inv.thepixora.com)
-    const fallbackInstanceUrl = `https://inv.thepixora.com/latest_version?id=${id}&itag=140&local=true`;
-    console.warn(`[play-yt] Fallback to trusted inv.thepixora.com instance: ${fallbackInstanceUrl}`);
-    resolvedCache.set(id, { url: fallbackInstanceUrl, timestamp: Date.now() });
-    return await sendResponse(fallbackInstanceUrl);
-  }
-}
+    responseHeaders.set('Access-Control-Allow-Origin', '*');
+    responseHeaders.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
 
+    const status = streamRes.status === 206 ? 206 : 200;
+
+    return new NextResponse(streamRes.body, {
+      status,
+      headers: responseHeaders
+    });
+  }
+
+  // 3. Fallback to JioSaavn stream if title is available
+  if (title) {
+    try {
+      const query = artist ? `${title} ${artist}` : title;
+      console.log(`[play-yt] Invidious proxy failed. Trying JioSaavn fallback for: "${query}"`);
+      const fallbackSongs = await fetchSaavnSongsWithFallback(query, 3);
+
+      if (fallbackSongs && fallbackSongs.length > 0) {
+        const fallbackSong = fallbackSongs[0];
+        const saavnStreamUrl =
+          fallbackSong.streamUrl_high ||
+          fallbackSong.streamUrl ||
+          fallbackSong.streamUrl_med ||
+          fallbackSong.streamUrl_low;
+
+        if (saavnStreamUrl) {
+          console.log(`[play-yt] JioSaavn fallback SUCCESS. Proxying JioSaavn CDN URL: ${saavnStreamUrl}`);
+
+          const saavnRes = await fetch(saavnStreamUrl, {
+            headers: headersToSend
+          });
+
+          if (saavnRes.ok || saavnRes.status === 206) {
+            resolvedCache.set(id, { url: saavnStreamUrl, timestamp: Date.now() });
+
+            if (json) {
+              return NextResponse.json({ streamUrl: saavnStreamUrl }, {
+                headers: {
+                  'Access-Control-Allow-Origin': '*',
+                  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0'
+                }
+              });
+            }
+
+            const responseHeaders = new Headers();
+            responseHeaders.set('Content-Type', saavnRes.headers.get('content-type') || 'audio/mpeg');
+            if (saavnRes.headers.has('content-range')) {
+              responseHeaders.set('Content-Range', saavnRes.headers.get('content-range')!);
+            }
+            if (saavnRes.headers.has('accept-ranges')) {
+              responseHeaders.set('Accept-Ranges', saavnRes.headers.get('accept-ranges')!);
+            }
+            if (saavnRes.headers.has('content-length')) {
+              responseHeaders.set('Content-Length', saavnRes.headers.get('content-length')!);
+            }
+            responseHeaders.set('Access-Control-Allow-Origin', '*');
+            responseHeaders.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+
+            return new NextResponse(saavnRes.body, {
+              status: saavnRes.status === 206 ? 206 : 200,
+              headers: responseHeaders
+            });
+          }
+        }
+      }
+    } catch (saavnErr) {
+      console.error('[play-yt] JioSaavn fallback search failed:', saavnErr);
+    }
+  }
+
+  // 4. Fallback failing response to prevent cross-origin stripping redirects
+  console.error(`[play-yt] All streaming paths failed for video ${id}`);
+  return NextResponse.json(
+    { error: 'All streaming resolution paths failed. Please try a different track.' },
+    {
+      status: 502,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0'
+      }
+    }
+  );
+}
