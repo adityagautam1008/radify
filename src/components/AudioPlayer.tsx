@@ -4,6 +4,26 @@ import { useEffect, useRef } from 'react';
 import { usePlayerStore } from '@/store/playerStore';
 import * as offlineDb from '@/lib/db';
 
+// Single global HTMLAudioElement to ensure it can be synchronously "blessed" (unlocked)
+// within the user interaction (click) tick on mobile browsers (iOS Safari, Chrome Mobile).
+let globalAudio: HTMLAudioElement | null = null;
+if (typeof window !== 'undefined') {
+  globalAudio = new Audio();
+  globalAudio.preload = 'auto';
+
+  // Synchronously play a silent audio snippet on the exact user-click thread.
+  // This satisfies strict mobile webkit/blink autoplay user-gesture policies,
+  // allowing the same audio instance to later load and play external streams asynchronously.
+  (window as any).__adifyBlessAudio = () => {
+    if (globalAudio) {
+      if (!globalAudio.src) {
+        globalAudio.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAAA";
+      }
+      globalAudio.play().catch(() => {});
+    }
+  };
+}
+
 export default function AudioPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const seekLockRef = useRef(false);
@@ -25,8 +45,8 @@ export default function AudioPlayer() {
 
   // Initialize Audio element once
   useEffect(() => {
-    const audio = new Audio();
-    audio.preload = 'auto';
+    const audio = globalAudio;
+    if (!audio) return;
     audioRef.current = audio;
 
     const handlePlay = () => play();

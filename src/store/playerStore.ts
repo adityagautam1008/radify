@@ -81,11 +81,19 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   recentSongs: [],
   playlists: [],
 
-  play: () => set({ isPlaying: true }),
+  play: () => {
+    if (typeof window !== 'undefined' && (window as any).__adifyBlessAudio) {
+      (window as any).__adifyBlessAudio();
+    }
+    set({ isPlaying: true });
+  },
   
   pause: () => set({ isPlaying: false }),
   
   setSong: (song, queue = []) => {
+    if (typeof window !== 'undefined' && (window as any).__adifyBlessAudio) {
+      (window as any).__adifyBlessAudio();
+    }
     const activeQueue = queue.length > 0 ? queue : [song];
     const index = activeQueue.findIndex((s) => s.id === song.id);
     
@@ -104,6 +112,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setQueue: (queue) => set({ queue }),
 
   next: () => {
+    if (typeof window !== 'undefined' && (window as any).__adifyBlessAudio) {
+      (window as any).__adifyBlessAudio();
+    }
     const { queue, currentIndex, shuffle } = get();
     if (queue.length === 0) return;
     
@@ -132,6 +143,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   prev: () => {
+    if (typeof window !== 'undefined' && (window as any).__adifyBlessAudio) {
+      (window as any).__adifyBlessAudio();
+    }
     const { queue, currentIndex } = get();
     if (queue.length === 0) return;
     
