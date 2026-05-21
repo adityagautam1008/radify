@@ -57,7 +57,15 @@ export default function AudioPlayer() {
       pause();
       setIsBuffering(false);
     };
-    const handleEnded = () => next();
+    const handleEnded = () => {
+      // Safely ensure the track actually played through to the end before triggering next()
+      const hasEndedProperly = audio.duration && audio.currentTime > 0 && Math.abs(audio.duration - audio.currentTime) < 2.5;
+      if (hasEndedProperly) {
+        next();
+      } else {
+        console.warn('[AudioPlayer] Suppressed false ended event. CurrentTime:', audio.currentTime, 'Duration:', audio.duration);
+      }
+    };
     const handleError = () => {
       const err = audio.error;
       console.error('[AudioPlayer] Audio element error event occurred:', err);
@@ -239,9 +247,11 @@ export default function AudioPlayer() {
         if (!active || loadToken !== songLoadTokenRef.current) return;
 
         if (!canPlayStream) {
+          console.error('[AudioPlayer] Stream URL is empty or invalid.');
           pause();
-          if (usePlayerStore.getState().queue.length > 1) {
-            setTimeout(() => usePlayerStore.getState().next(), 300);
+          setIsBuffering(false);
+          if (typeof window !== 'undefined' && (window as any).__adifyTriggerToast) {
+            (window as any).__adifyTriggerToast("Stream URL is unavailable.");
           }
           return;
         }

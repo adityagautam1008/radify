@@ -52,7 +52,7 @@ async function getInvidiousInstances(): Promise<string[]> {
 // Probes candidate instances in parallel and returns the fastest responding one
 async function findFastestInstance(videoId: string): Promise<string> {
   const instances = await getInvidiousInstances();
-  const candidates = instances.slice(0, 6); // Probe the top 6 candidates concurrently
+  const candidates = instances.slice(0, 12); // Probe the top 12 candidates concurrently
 
   const checkInstance = async (instance: string): Promise<string> => {
     const controller = new AbortController();
