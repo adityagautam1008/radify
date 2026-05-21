@@ -457,6 +457,13 @@ export default function AppHome() {
     }, 2800);
   };
 
+  // Expose toast globally for AudioPlayer stream errors
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__adifyTriggerToast = (msg: string) => triggerToast(msg);
+    }
+  }, []);
+
   const handleThemeChange = (themeId: string) => {
     setTheme(themeId);
     if (typeof window !== 'undefined') {
@@ -1841,7 +1848,7 @@ export default function AppHome() {
       {/* Sidebar */}
       <aside className="w-64 bg-zinc-950 p-6 hidden md:flex flex-col gap-6 border-r border-zinc-900 shrink-0">
         <div className="text-3xl font-black tracking-tighter text-green-500 mb-4 flex items-center gap-2 cursor-pointer" onClick={() => setActiveTab('home')}>
-           <Disc size={32} className="animate-spin-slow text-green-500" /> ADIFY
+          <img src="/logo.jpg" alt="ADIFY" className="w-9 h-9 rounded-xl object-cover shadow-[0_0_15px_rgba(34,197,94,0.3)] border border-green-500/25" /> ADIFY
         </div>
         
         <nav className="flex flex-col gap-5 font-bold text-zinc-400">
@@ -1934,7 +1941,7 @@ export default function AppHome() {
         {/* Mobile Header / Nav */}
         <header className="flex md:hidden items-center justify-between p-4 bg-zinc-950/80 sticky top-0 backdrop-blur-md z-30 border-b border-zinc-900">
           <div className="text-2xl font-black tracking-tighter text-green-500 flex items-center gap-2" onClick={() => setActiveTab('home')}>
-            <Disc size={26} className="animate-spin-slow" /> ADIFY
+            <img src="/logo.jpg" alt="ADIFY" className="w-7 h-7 rounded-lg object-cover shadow-[0_0_10px_rgba(34,197,94,0.25)] border border-green-500/20" /> ADIFY
           </div>
           <div className="flex gap-2 sm:gap-4 items-center">
             <button onClick={() => setActiveTab('home')} className={`p-1.5 rounded-full ${activeTab === 'home' ? 'text-green-500 bg-zinc-900 shadow-inner' : 'text-zinc-400'}`}>

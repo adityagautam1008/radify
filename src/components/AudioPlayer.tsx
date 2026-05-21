@@ -63,9 +63,9 @@ export default function AudioPlayer() {
       console.error('[AudioPlayer] Audio element error event occurred:', err);
       setIsBuffering(false);
 
-      // Ignore MEDIA_ERR_ABORTED (code 1) or empty/data/document URLs which are not legitimate streaming errors
-      if (err && err.code === 1) {
-        console.log('[AudioPlayer] Ignoring MEDIA_ERR_ABORTED.');
+      // Ignore if there's no actual error object (false alarm) or it's a simple aborted load
+      if (!err || err.code === 1) {
+        console.log('[AudioPlayer] Ignoring false error or MEDIA_ERR_ABORTED.');
         return;
       }
       
@@ -81,17 +81,12 @@ export default function AudioPlayer() {
         return;
       }
 
-      console.error('[AudioPlayer] Legitimate stream error. Pausing and scheduling skip...');
+      console.error('[AudioPlayer] Legitimate stream error. Pausing playback.');
       pause();
-      if (skipAfterErrorRef.current) {
-        window.clearTimeout(skipAfterErrorRef.current);
+      
+      if (typeof window !== 'undefined' && (window as any).__adifyTriggerToast) {
+        (window as any).__adifyTriggerToast("Stream unavailable. Click play to retry.");
       }
-      skipAfterErrorRef.current = window.setTimeout(() => {
-        const activeState = usePlayerStore.getState();
-        if (activeState.queue.length > 1) {
-          activeState.next();
-        }
-      }, 450);
     };
     
     const handleTimeUpdate = () => {

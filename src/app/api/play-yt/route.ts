@@ -59,15 +59,18 @@ async function findFastestInstance(videoId: string): Promise<string> {
     const timeoutId = setTimeout(() => controller.abort(), 2500); // 2.5 second probe timeout
 
     try {
-      // Lightweight fetch to verify instance response and video availability
-      const res = await fetch(`${instance}/api/v1/videos/${videoId}`, {
-        signal: controller.signal
+      // Probing the actual stream URL with a Range request to verify it's not rate-limited or blocked (403 Forbidden) by YouTube
+      const res = await fetch(`${instance}/latest_version?id=${videoId}&itag=140&local=true`, {
+        signal: controller.signal,
+        headers: {
+          'Range': 'bytes=0-0'
+        }
       });
       clearTimeout(timeoutId);
-      if (res.ok) {
+      if (res.ok || res.status === 206) {
         return instance;
       }
-      throw new Error(`Instance returned status: ${res.status}`);
+      throw new Error(`Instance stream probe returned status: ${res.status}`);
     } catch (err) {
       clearTimeout(timeoutId);
       throw err;
