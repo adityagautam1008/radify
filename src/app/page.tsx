@@ -5,7 +5,7 @@ import {
   Play, Pause, Heart, SkipForward, SkipBack, Search, Home, Library, 
   Volume2, VolumeX, Download, Disc, Sparkles, Music, Loader2, Shuffle, Timer, X,
   Plus, Trash2, Clock, ListMusic, Layers, GripVertical, Settings,
-  ChevronUp, ChevronDown, Mic, Share2, Palette, Bot, Radio, AlertTriangle,
+  ChevronUp, ChevronDown, Mic, Share2, Palette, Bot, Radio, AlertTriangle, Zap,
   Folder, FolderOpen, FileText, FileAudio, FileCode, CheckCircle, File as FileIcon
 } from "lucide-react";
 import { usePlayerStore, Song } from '@/store/playerStore';
@@ -80,6 +80,10 @@ export default function AppHome() {
 
   // Synced Lyrics Side Panel
   const [showLyrics, setShowLyrics] = useState(false);
+
+  // Expanded Mobile Song Details Drawer Overlay
+  const [showMobileDetails, setShowMobileDetails] = useState(false);
+  const [showMobileQueue, setShowMobileQueue] = useState(false);
 
   // Web Speech Hands-free Voice Assistant
   const [isListeningVoice, setIsListeningVoice] = useState(false);
@@ -199,7 +203,11 @@ export default function AppHome() {
     addSongToPlaylist,
     removeSongFromPlaylist,
     loadHistoryAndPlaylists,
-    setLikedSongs
+    setLikedSongs,
+    queue,
+    currentIndex,
+    moveQueueSong,
+    removeQueueSong
   } = usePlayerStore();
 
   // Lyrics Side Drawer Refs and Calculations
@@ -249,6 +257,18 @@ export default function AppHome() {
       setPreviewAudioUrl(null);
     }
   }, [selectedSandboxFile]);
+
+  // Prevent background scrolling when mobile song details overlay is open
+  useEffect(() => {
+    if (showMobileDetails) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [showMobileDetails]);
 
   // Load state and data on mount
   useEffect(() => {
@@ -3563,217 +3583,711 @@ export default function AppHome() {
 
       {/* Bottom Player Bar */}
       {currentSong && (
-        <footer className="h-[72px] md:h-[95px] bg-zinc-950 border-t border-zinc-900 fixed bottom-0 w-full px-4 flex items-center justify-between z-50 shadow-2xl transition-all duration-300">
-          {/* Tiny top progress bar for mobile */}
-          <div className="absolute top-0 left-0 right-0 h-[2px] bg-zinc-800/80 md:hidden overflow-hidden">
-            <div 
-              className="h-full bg-green-500 transition-all duration-100 ease-out" 
-              style={{ width: `${(currentTime / (duration || 100)) * 100}%` }}
-            />
-          </div>
-
-          {/* Left: Song Info */}
-          <div className="flex items-center gap-3 flex-1 md:flex-initial md:w-1/3 min-w-0">
-            <div className="w-12 h-12 md:w-14 md:h-14 bg-zinc-800 rounded shadow-md overflow-hidden relative flex-shrink-0">
-              {currentSong.image ? (
-                <img src={currentSong.image} alt={currentSong.title} decoding="async" className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <Music className="size-5 md:size-6 text-zinc-400" />
-                </div>
-              )}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-xs md:text-sm font-bold text-white hover:underline cursor-pointer truncate">{currentSong.title}</div>
-              <div className="text-[10px] md:text-xs text-zinc-400 hover:underline cursor-pointer truncate">{currentSong.artist}</div>
-            </div>
-            <button 
-              onClick={() => toggleLike(currentSong)} 
-              className="text-zinc-400 hover:text-white transition flex-shrink-0 ml-2"
-            >
-              <Heart 
-                size={18} 
-                fill={likedSongs.some((s) => s.id === currentSong.id) ? '#22c55e' : 'none'} 
-                className={likedSongs.some((s) => s.id === currentSong.id) ? 'text-green-500' : ''} 
-              />
-            </button>
-            <button 
-              onClick={() => handleDownload(currentSong)}
-              className="text-zinc-400 hover:text-white transition ml-2 hidden sm:block"
-              title="Download Song"
-            >
-              <Download size={18} />
-            </button>
-          </div>
-          
-          {/* Center: Controls & Slider (Desktop Only) */}
-          <div className="hidden md:flex flex-col items-center w-1/3 max-w-[722px] px-4">
-            <div className="flex items-center gap-5 mb-2">
-              {/* Shuffle Button */}
-              <button 
-                onClick={toggleShuffle} 
-                className={`transition hover:scale-110 ${shuffle ? 'text-green-500' : 'text-zinc-400 hover:text-white'}`}
-                title={shuffle ? 'Shuffle: On' : 'Shuffle: Off'}
-              >
-                <Shuffle size={16} />
-              </button>
-
-              <button onClick={prev} className="text-zinc-400 hover:text-white transition">
-                <SkipBack size={20} />
-              </button>
-              <button 
-                onClick={isPlaying ? pause : play}
-                className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-black hover:scale-105 transition shadow-lg"
-              >
-                {isPlaying ? (
-                  <Pause size={18} fill="currentColor" />
-                ) : (
-                  <Play size={18} fill="currentColor" className="ml-1" />
-                )}
-              </button>
-              <button onClick={next} className="text-zinc-400 hover:text-white transition">
-                <SkipForward size={20} />
-              </button>
-
-              {/* Sleep Timer Button */}
-              <div className="relative">
-                <button 
-                  onClick={() => setShowTimerMenu(!showTimerMenu)} 
-                  className={`transition hover:scale-110 ${sleepTimerEnd ? 'text-green-500' : 'text-zinc-400 hover:text-white'}`}
-                  title="Sleep Timer"
-                >
-                  <Timer size={16} />
-                </button>
-
-                {/* Timer remaining badge */}
-                {sleepTimerEnd && timerRemaining && (
-                  <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[9px] text-green-400 font-mono font-bold whitespace-nowrap bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800">
-                    {timerRemaining}
-                  </span>
-                )}
-
-                {/* Timer dropdown */}
-                {showTimerMenu && (
-                  <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-3 w-44 z-[100]">
-                    <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Sleep Timer</div>
-                    {timerOptions.map((opt) => (
-                      <button
-                        key={opt.value}
-                        onClick={() => {
-                          setSleepTimer(opt.value);
-                          setShowTimerMenu(false);
-                        }}
-                        className={`w-full text-left px-3 py-1.5 rounded-lg text-sm font-semibold transition ${
-                          sleepTimerMinutes === opt.value
-                            ? 'bg-green-500/20 text-green-400'
-                            : 'text-zinc-300 hover:bg-zinc-800'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                    {sleepTimerEnd && (
-                      <button
-                        onClick={() => {
-                          setSleepTimer(null);
-                          setShowTimerMenu(false);
-                        }}
-                        className="w-full text-left px-3 py-1.5 rounded-lg text-sm font-semibold text-red-400 hover:bg-red-500/10 mt-1 flex items-center gap-2 transition"
-                      >
-                        <X size={12} /> Cancel Timer
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-2 w-full">
-              <span className="text-[10px] text-zinc-500 font-mono w-8 text-right">
-                {formatTime(isSeeking ? tempSeekTime : currentTime)}
-              </span>
-              
-              {/* Scrubbable Seek Bar */}
+        <>
+          <footer 
+            onClick={() => {
+              if (typeof window !== 'undefined' && window.innerWidth < 768) {
+                setShowMobileDetails(true);
+              }
+            }}
+            className="h-[72px] md:h-[95px] bg-zinc-950 border-t border-zinc-900 fixed bottom-0 w-full px-4 flex items-center justify-between z-50 shadow-2xl transition-all duration-300 cursor-pointer md:cursor-default select-none"
+          >
+            {/* Interactive progress bar for mobile */}
+            <div className="absolute top-0 left-0 right-0 h-[6px] md:hidden z-30" onClick={(e) => e.stopPropagation()}>
               <input 
                 type="range"
                 min="0"
                 max={duration || 100}
                 step="0.1"
                 value={isSeeking ? tempSeekTime : currentTime}
-                onMouseDown={handleSeekStart}
-                onTouchStart={handleSeekStart}
-                onChange={handleSeekChange}
-                onMouseUp={handleSeekEnd}
-                onTouchEnd={handleSeekEnd}
-                className="h-1 bg-zinc-800 rounded-full flex-1 appearance-none cursor-pointer accent-green-500 hover:accent-green-400 focus:outline-none"
+                onMouseDown={(e) => { e.stopPropagation(); handleSeekStart(); }}
+                onTouchStart={(e) => { e.stopPropagation(); handleSeekStart(); }}
+                onChange={(e) => { e.stopPropagation(); handleSeekChange(e); }}
+                onMouseUp={(e) => { e.stopPropagation(); handleSeekEnd(); }}
+                onTouchEnd={(e) => { e.stopPropagation(); handleSeekEnd(); }}
+                className="absolute top-0 left-0 right-0 w-full h-full appearance-none bg-zinc-800/40 cursor-pointer focus:outline-none z-30 opacity-90"
+                style={{
+                  background: `linear-gradient(to right, ${
+                    theme === 'emerald' ? '#22c55e' : theme === 'sunset' ? '#f97316' : theme === 'cyberpunk' ? '#ec4899' : theme === 'ocean' ? '#06b6d4' : '#8b5cf6'
+                  } ${( (isSeeking ? tempSeekTime : currentTime) / (duration || 100) ) * 100}%, rgba(39, 39, 42, 0.4) ${( (isSeeking ? tempSeekTime : currentTime) / (duration || 100) ) * 100}%)`
+                }}
               />
-              
-              <span className="text-[10px] text-zinc-500 font-mono w-8 text-left">{formatTime(duration)}</span>
             </div>
-          </div>
-          
-          {/* Right: Controls (Mobile) & Volume/Utilities (Desktop) */}
-          <div className="flex items-center gap-1 md:gap-3 flex-shrink-0">
-            {/* Mobile Playback Controls - visible only on phone layout */}
-            <div className="flex items-center gap-1 md:hidden mr-1">
-              <button onClick={prev} className="text-zinc-400 hover:text-white p-2 transition">
-                <SkipBack size={18} />
+
+            {/* Left: Song Info */}
+            <div 
+              className="flex items-center gap-3 flex-1 md:flex-initial md:w-1/3 min-w-0"
+              onClick={(e) => {
+                // Let desktop do nothing, mobile can expand drawer
+                if (typeof window !== 'undefined' && window.innerWidth >= 768) {
+                  e.stopPropagation();
+                }
+              }}
+            >
+              <div className="w-12 h-12 md:w-14 md:h-14 bg-zinc-800 rounded shadow-md overflow-hidden relative flex-shrink-0">
+                {currentSong.image ? (
+                  <img src={currentSong.image} alt={currentSong.title} decoding="async" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <Music className="size-5 md:size-6 text-zinc-400" />
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-xs md:text-sm font-bold text-white hover:underline cursor-pointer truncate">{currentSong.title}</div>
+                <div className="text-[10px] md:text-xs text-zinc-400 hover:underline cursor-pointer truncate">{currentSong.artist}</div>
+              </div>
+              <button 
+                onClick={(e) => { e.stopPropagation(); toggleLike(currentSong); }} 
+                className="text-zinc-400 hover:text-white transition flex-shrink-0 ml-2"
+              >
+                <Heart 
+                  size={18} 
+                  fill={likedSongs.some((s) => s.id === currentSong.id) ? (theme === 'emerald' ? '#22c55e' : theme === 'sunset' ? '#f97316' : theme === 'cyberpunk' ? '#ec4899' : theme === 'ocean' ? '#06b6d4' : '#8b5cf6') : 'none'} 
+                  className={likedSongs.some((s) => s.id === currentSong.id) ? (theme === 'emerald' ? 'text-green-500' : theme === 'sunset' ? 'text-orange-500' : theme === 'cyberpunk' ? 'text-pink-500' : theme === 'ocean' ? 'text-cyan-500' : 'text-violet-500') : ''} 
+                />
               </button>
               <button 
-                onClick={isPlaying ? pause : play}
-                className="w-9 h-9 bg-white rounded-full flex items-center justify-center text-black hover:scale-105 transition shadow-md flex-shrink-0"
+                onClick={(e) => { e.stopPropagation(); handleDownload(currentSong); }}
+                className="text-zinc-400 hover:text-white transition ml-2 z-10"
+                title="Download Song"
               >
-                {isPlaying ? (
-                  <Pause size={16} fill="currentColor" />
-                ) : (
-                  <Play size={16} fill="currentColor" className="ml-0.5" />
-                )}
-              </button>
-              <button onClick={next} className="text-zinc-400 hover:text-white p-2 transition">
-                <SkipForward size={18} />
+                <Download size={18} />
               </button>
             </div>
+            
+            {/* Center: Controls & Slider (Desktop Only) */}
+            <div className="hidden md:flex flex-col items-center w-1/3 max-w-[722px] px-4" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center gap-5 mb-2">
+                {/* Shuffle Button */}
+                <button 
+                  onClick={(e) => { e.stopPropagation(); toggleShuffle(); }} 
+                  className={`transition hover:scale-110 ${
+                    shuffle 
+                      ? theme === 'emerald' ? 'text-green-500' : theme === 'sunset' ? 'text-orange-500' : theme === 'cyberpunk' ? 'text-pink-500' : theme === 'ocean' ? 'text-cyan-500' : 'text-violet-500'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                  title={shuffle ? 'Shuffle: On' : 'Shuffle: Off'}
+                >
+                  <Shuffle size={16} />
+                </button>
 
-            {/* Lyrics Panel Toggle */}
-            <button
-              onClick={() => setShowLyrics(true)}
-              className={`text-zinc-400 hover:text-white p-2 transition ${showLyrics ? 'text-green-500' : ''}`}
-              title="Lyrics"
-            >
-              <Layers size={18} />
-            </button>
+                <button onClick={(e) => { e.stopPropagation(); prev(); }} className="text-zinc-400 hover:text-white transition">
+                  <SkipBack size={20} />
+                </button>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); isPlaying ? pause() : play(); }}
+                  className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-black hover:scale-105 transition shadow-lg"
+                >
+                  {isPlaying ? (
+                    <Pause size={18} fill="currentColor" />
+                  ) : (
+                    <Play size={18} fill="currentColor" className="ml-1" />
+                  )}
+                </button>
+                <button onClick={(e) => { e.stopPropagation(); next(); }} className="text-zinc-400 hover:text-white transition">
+                  <SkipForward size={20} />
+                </button>
 
-            {/* Desktop-only utilities & volume */}
-            <button
-              onClick={() => handleShare(currentSong.title, `Listening to ${currentSong.title} by ${currentSong.artist} on ADIFY.`)}
-              className="text-zinc-400 hover:text-white p-2 transition hidden sm:block"
-              title="Share Song"
-            >
-              <Share2 size={18} />
-            </button>
-            <button
-              onClick={startVoiceAssistant}
-              className={`text-zinc-400 hover:text-white p-2 transition hidden sm:block ${isListeningVoice ? 'text-red-400 animate-pulse' : ''}`}
-              title={isListeningVoice ? voiceCommandText : 'Voice Assistant'}
-            >
-              <Mic size={18} />
-            </button>
-            <button 
-              onClick={() => setVolume(volume === 0 ? 0.8 : 0)}
-              className="text-zinc-400 hover:text-white p-2 transition hidden md:block"
-            >
-              {volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
-            </button>
-            <input 
-              type="range"
-              min="0"
-              max="1"
-              step="0.01"
-              value={volume}
-              onChange={(e) => setVolume(Number(e.target.value))}
-              className="h-1 bg-zinc-800 rounded-full w-24 appearance-none cursor-pointer accent-green-500 hover:accent-green-400 focus:outline-none hidden md:block"
-            />
-          </div>
-        </footer>
+                {/* Sleep Timer Button */}
+                <div className="relative">
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); setShowTimerMenu(!showTimerMenu); }} 
+                    className={`transition hover:scale-110 ${
+                      sleepTimerEnd 
+                        ? theme === 'emerald' ? 'text-green-500' : theme === 'sunset' ? 'text-orange-500' : theme === 'cyberpunk' ? 'text-pink-500' : theme === 'ocean' ? 'text-cyan-500' : 'text-violet-500'
+                        : 'text-zinc-400 hover:text-white'
+                    }`}
+                    title="Sleep Timer"
+                  >
+                    <Timer size={16} />
+                  </button>
+
+                  {/* Timer remaining badge */}
+                  {sleepTimerEnd && timerRemaining && (
+                    <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[9px] text-green-400 font-mono font-bold whitespace-nowrap bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800">
+                      {timerRemaining}
+                    </span>
+                  )}
+
+                  {/* Timer dropdown */}
+                  {showTimerMenu && (
+                    <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-3 w-44 z-[100]" onClick={(e) => e.stopPropagation()}>
+                      <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-2">Sleep Timer</div>
+                      {timerOptions.map((opt) => (
+                        <button
+                          key={opt.value}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSleepTimer(opt.value);
+                            setShowTimerMenu(false);
+                          }}
+                          className={`w-full text-left px-3 py-1.5 rounded-lg text-sm font-semibold transition ${
+                            sleepTimerMinutes === opt.value
+                              ? theme === 'emerald' ? 'bg-green-500/20 text-green-400' : theme === 'sunset' ? 'bg-orange-500/20 text-orange-400' : theme === 'cyberpunk' ? 'bg-pink-500/20 text-pink-400' : theme === 'ocean' ? 'bg-cyan-500/20 text-cyan-400' : 'bg-violet-500/20 text-violet-400'
+                              : 'text-zinc-300 hover:bg-zinc-800'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                      {sleepTimerEnd && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSleepTimer(null);
+                            setShowTimerMenu(false);
+                          }}
+                          className="w-full text-left px-3 py-1.5 rounded-lg text-sm font-semibold text-red-400 hover:bg-red-500/10 mt-1 flex items-center gap-2 transition"
+                        >
+                          <X size={12} /> Cancel Timer
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 w-full">
+                <span className="text-[10px] text-zinc-500 font-mono w-8 text-right">
+                  {formatTime(isSeeking ? tempSeekTime : currentTime)}
+                </span>
+                
+                {/* Scrubbable Seek Bar */}
+                <input 
+                  type="range"
+                  min="0"
+                  max={duration || 100}
+                  step="0.1"
+                  value={isSeeking ? tempSeekTime : currentTime}
+                  onMouseDown={handleSeekStart}
+                  onTouchStart={handleSeekStart}
+                  onChange={handleSeekChange}
+                  onMouseUp={handleSeekEnd}
+                  onTouchEnd={handleSeekEnd}
+                  onClick={(e) => e.stopPropagation()}
+                  className={`h-1 rounded-full flex-1 appearance-none cursor-pointer focus:outline-none bg-zinc-850 accent-${
+                    theme === 'emerald' ? 'green' : theme === 'sunset' ? 'orange' : theme === 'cyberpunk' ? 'pink' : theme === 'ocean' ? 'cyan' : 'violet'
+                  }-500 hover:accent-${
+                    theme === 'emerald' ? 'green' : theme === 'sunset' ? 'orange' : theme === 'cyberpunk' ? 'pink' : theme === 'ocean' ? 'cyan' : 'violet'
+                  }-400`}
+                  style={{
+                    background: `linear-gradient(to right, ${
+                      theme === 'emerald' ? '#22c55e' : theme === 'sunset' ? '#f97316' : theme === 'cyberpunk' ? '#ec4899' : theme === 'ocean' ? '#06b6d4' : '#8b5cf6'
+                    } ${( (isSeeking ? tempSeekTime : currentTime) / (duration || 100) ) * 100}%, #27272a ${( (isSeeking ? tempSeekTime : currentTime) / (duration || 100) ) * 100}%)`
+                  }}
+                />
+                
+                <span className="text-[10px] text-zinc-500 font-mono w-8 text-left">{formatTime(duration)}</span>
+              </div>
+            </div>
+            
+            {/* Right: Controls (Mobile) & Volume/Utilities (Desktop) */}
+            <div className="flex items-center gap-1 md:gap-3 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+              {/* Mobile Playback Controls - visible only on phone layout */}
+              <div className="flex items-center gap-1 md:hidden mr-1">
+                <button onClick={(e) => { e.stopPropagation(); prev(); }} className="text-zinc-400 hover:text-white p-2 transition">
+                  <SkipBack size={18} />
+                </button>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); isPlaying ? pause() : play(); }}
+                  className="w-9 h-9 bg-white rounded-full flex items-center justify-center text-black hover:scale-105 active:scale-95 transition shadow-md flex-shrink-0"
+                >
+                  {isPlaying ? (
+                    <Pause size={16} fill="currentColor" />
+                  ) : (
+                    <Play size={16} fill="currentColor" className="ml-0.5" />
+                  )}
+                </button>
+                <button onClick={(e) => { e.stopPropagation(); next(); }} className="text-zinc-400 hover:text-white p-2 transition">
+                  <SkipForward size={18} />
+                </button>
+              </div>
+
+              {/* Lyrics Panel Toggle */}
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowLyrics(true); }}
+                className={`text-zinc-400 hover:text-white p-2 transition ${
+                  showLyrics 
+                    ? theme === 'emerald' ? 'text-green-500' : theme === 'sunset' ? 'text-orange-500' : theme === 'cyberpunk' ? 'text-pink-500' : theme === 'ocean' ? 'text-cyan-500' : 'text-violet-500'
+                    : ''
+                }`}
+                title="Lyrics"
+              >
+                <Layers size={18} />
+              </button>
+
+              {/* Desktop-only utilities & volume */}
+              <button
+                onClick={(e) => { e.stopPropagation(); handleShare(currentSong.title, `Listening to ${currentSong.title} by ${currentSong.artist} on ADIFY.`); }}
+                className="text-zinc-400 hover:text-white p-2 transition hidden sm:block"
+                title="Share Song"
+              >
+                <Share2 size={18} />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); startVoiceAssistant(); }}
+                className={`text-zinc-400 hover:text-white p-2 transition hidden sm:block ${isListeningVoice ? 'text-red-400 animate-pulse' : ''}`}
+                title={isListeningVoice ? voiceCommandText : 'Voice Assistant'}
+              >
+                <Mic size={18} />
+              </button>
+              <button 
+                onClick={(e) => { e.stopPropagation(); setVolume(volume === 0 ? 0.8 : 0); }}
+                className="text-zinc-400 hover:text-white p-2 transition hidden md:block"
+              >
+                {volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
+              </button>
+              <input 
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                value={volume}
+                onChange={(e) => setVolume(Number(e.target.value))}
+                onClick={(e) => e.stopPropagation()}
+                className={`h-1 bg-zinc-800 rounded-full w-24 appearance-none cursor-pointer focus:outline-none accent-${
+                  theme === 'emerald' ? 'green' : theme === 'sunset' ? 'orange' : theme === 'cyberpunk' ? 'pink' : theme === 'ocean' ? 'cyan' : 'violet'
+                }-500 hover:accent-${
+                  theme === 'emerald' ? 'green' : theme === 'sunset' ? 'orange' : theme === 'cyberpunk' ? 'pink' : theme === 'ocean' ? 'cyan' : 'violet'
+                }-400 hidden md:block`}
+              />
+            </div>
+          </footer>
+
+          {/* Expanded Mobile Song Details Drawer Overlay */}
+          {showMobileDetails && (
+            <div className="fixed inset-0 bg-zinc-950/98 backdrop-blur-3xl z-[150] md:hidden flex flex-col justify-between p-6 transition-all duration-500 ease-in-out overflow-y-auto">
+              {/* Animated Background Glowing Aura */}
+              <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+                <div className={`absolute -top-40 -left-40 w-96 h-96 rounded-full blur-[120px] opacity-20 transition-all duration-1000 ${
+                  theme === 'emerald' ? 'bg-green-500' :
+                  theme === 'sunset' ? 'bg-orange-500' :
+                  theme === 'cyberpunk' ? 'bg-pink-500' :
+                  theme === 'ocean' ? 'bg-cyan-500' :
+                  'bg-violet-500'
+                }`} />
+                <div className={`absolute -bottom-40 -right-40 w-96 h-96 rounded-full blur-[120px] opacity-15 transition-all duration-1000 ${
+                  theme === 'emerald' ? 'bg-green-500' :
+                  theme === 'sunset' ? 'bg-orange-500' :
+                  theme === 'cyberpunk' ? 'bg-pink-500' :
+                  theme === 'ocean' ? 'bg-cyan-500' :
+                  'bg-violet-500'
+                }`} />
+              </div>
+
+              <div className="relative z-10 flex flex-col h-full justify-between gap-6">
+                {/* Header */}
+                <div className="flex items-center justify-between">
+                  <button 
+                    onClick={() => {
+                      setShowMobileDetails(false);
+                      setShowMobileQueue(false);
+                    }}
+                    className="w-10 h-10 bg-zinc-900/60 border border-zinc-800/40 rounded-full flex items-center justify-center text-zinc-400 active:text-white transition active:scale-95"
+                  >
+                    <ChevronDown size={24} />
+                  </button>
+                  <div className="text-center min-w-0 flex-1 px-4">
+                    <span className="text-[10px] uppercase font-black tracking-widest text-zinc-500 block mb-0.5">NOW PLAYING</span>
+                    <span className="text-xs font-bold text-zinc-300 truncate block">
+                      {currentSong.source === 'youtube' ? 'YouTube Music' : 'JioSaavn Stream'}
+                    </span>
+                  </div>
+                  <button 
+                    onClick={() => handleShare(currentSong.title, `Listening to ${currentSong.title} by ${currentSong.artist} on ADIFY.`)}
+                    className="w-10 h-10 bg-zinc-900/60 border border-zinc-800/40 rounded-full flex items-center justify-center text-zinc-400 active:text-white transition active:scale-95"
+                  >
+                    <Share2 size={18} />
+                  </button>
+                </div>
+
+                {/* Album Art Cover Area */}
+                <div className="my-auto py-4 flex flex-col items-center">
+                  <div className="relative w-64 h-64 sm:w-72 sm:h-72 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.8)] overflow-hidden border border-zinc-800 transition duration-500">
+                    {currentSong.image ? (
+                      <img 
+                        src={currentSong.image} 
+                        alt={currentSong.title} 
+                        className="w-full h-full object-cover transition-transform duration-700 hover:scale-105"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-zinc-900">
+                        <Music className="size-20 text-zinc-600" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Song Metadata Details */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-xl font-black text-white tracking-tight truncate">{currentSong.title}</h3>
+                      <p className="text-xs font-bold text-zinc-400 truncate hover:text-white transition cursor-pointer">{currentSong.artist}</p>
+                    </div>
+                    <button 
+                      onClick={() => toggleLike(currentSong)} 
+                      className="w-11 h-11 bg-zinc-900/40 hover:bg-zinc-900/80 rounded-full flex items-center justify-center border border-zinc-800/50 transition active:scale-90 flex-shrink-0"
+                    >
+                      <Heart 
+                        size={20} 
+                        fill={likedSongs.some((s) => s.id === currentSong.id) ? (theme === 'emerald' ? '#22c55e' : theme === 'sunset' ? '#f97316' : theme === 'cyberpunk' ? '#ec4899' : theme === 'ocean' ? '#06b6d4' : '#8b5cf6') : 'none'} 
+                        className={likedSongs.some((s) => s.id === currentSong.id) ? (theme === 'emerald' ? 'text-green-500' : theme === 'sunset' ? 'text-orange-500' : theme === 'cyberpunk' ? 'text-pink-500' : theme === 'ocean' ? 'text-cyan-500' : 'text-violet-500') : 'text-zinc-400'} 
+                      />
+                    </button>
+                  </div>
+
+                  {/* Seek Bar / Slider Control */}
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="range"
+                        min="0"
+                        max={duration || 100}
+                        step="0.1"
+                        value={isSeeking ? tempSeekTime : currentTime}
+                        onMouseDown={handleSeekStart}
+                        onTouchStart={handleSeekStart}
+                        onChange={handleSeekChange}
+                        onMouseUp={handleSeekEnd}
+                        onTouchEnd={handleSeekEnd}
+                        className={`h-2 rounded-full flex-1 appearance-none cursor-pointer focus:outline-none bg-zinc-850 accent-${
+                          theme === 'emerald' ? 'green' : theme === 'sunset' ? 'orange' : theme === 'cyberpunk' ? 'pink' : theme === 'ocean' ? 'cyan' : 'violet'
+                        }-500`}
+                        style={{ background: `linear-gradient(to right, ${theme === 'emerald' ? '#22c55e' : theme === 'sunset' ? '#f97316' : theme === 'cyberpunk' ? '#ec4899' : theme === 'ocean' ? '#06b6d4' : '#8b5cf6'} ${((isSeeking ? tempSeekTime : currentTime) / (duration || 100)) * 100}%, #27272a ${((isSeeking ? tempSeekTime : currentTime) / (duration || 100)) * 100}%)` }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-[10px] font-mono text-zinc-500 font-bold">
+                      <span>{formatTime(isSeeking ? tempSeekTime : currentTime)}</span>
+                      <span>{formatTime(duration)}</span>
+                    </div>
+                  </div>
+
+                  {/* Main Playback Control Panel */}
+                  <div className="flex items-center justify-between px-2">
+                    {/* Shuffle Toggle */}
+                    <button 
+                      onClick={toggleShuffle} 
+                      className={`w-10 h-10 flex items-center justify-center rounded-full transition active:scale-95 ${
+                        shuffle 
+                          ? theme === 'emerald' ? 'text-green-500 bg-green-500/10' :
+                            theme === 'sunset' ? 'text-orange-500 bg-orange-500/10' :
+                            theme === 'cyberpunk' ? 'text-pink-500 bg-pink-500/10' :
+                            theme === 'ocean' ? 'text-cyan-500 bg-cyan-500/10' :
+                            'text-violet-500 bg-violet-500/10'
+                          : 'text-zinc-400'
+                      }`}
+                      title="Shuffle"
+                    >
+                      <Shuffle size={20} />
+                    </button>
+
+                    {/* Skip Prev */}
+                    <button 
+                      onClick={prev} 
+                      className="w-12 h-12 flex items-center justify-center rounded-full text-zinc-200 active:text-white transition active:scale-90"
+                    >
+                      <SkipBack size={26} fill="currentColor" />
+                    </button>
+
+                    {/* Big Circular Play/Pause Button */}
+                    <button 
+                      onClick={isPlaying ? pause : play}
+                      className="w-16 h-16 bg-white text-black rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition shadow-2xl"
+                    >
+                      {isPlaying ? (
+                        <Pause size={24} fill="currentColor" />
+                      ) : (
+                        <Play size={24} fill="currentColor" className="ml-0.5" />
+                      )}
+                    </button>
+
+                    {/* Skip Next */}
+                    <button 
+                      onClick={next} 
+                      className="w-12 h-12 flex items-center justify-center rounded-full text-zinc-200 active:text-white transition active:scale-90"
+                    >
+                      <SkipForward size={26} fill="currentColor" />
+                    </button>
+
+                    {/* Sleep Timer button */}
+                    <div className="relative">
+                      <button 
+                        onClick={() => setShowTimerMenu(!showTimerMenu)} 
+                        className={`w-10 h-10 flex items-center justify-center rounded-full transition active:scale-95 ${
+                          sleepTimerEnd 
+                            ? theme === 'emerald' ? 'text-green-500 bg-green-500/10' :
+                              theme === 'sunset' ? 'text-orange-500 bg-orange-500/10' :
+                              theme === 'cyberpunk' ? 'text-pink-500 bg-pink-500/10' :
+                              theme === 'ocean' ? 'text-cyan-500 bg-cyan-500/10' :
+                              'text-violet-500 bg-violet-500/10'
+                            : 'text-zinc-400'
+                        }`}
+                      >
+                        <Timer size={20} />
+                      </button>
+
+                      {/* Sleep timer remaining label overlay */}
+                      {sleepTimerEnd && timerRemaining && (
+                        <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-[9px] text-green-400 font-mono font-bold whitespace-nowrap bg-zinc-900 border border-zinc-800 px-1 py-0.5 rounded">
+                          {timerRemaining}
+                        </span>
+                      )}
+
+                      {/* Timer dropdown relative overlay */}
+                      {showTimerMenu && (
+                        <div className="absolute bottom-12 right-0 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-2 w-36 z-[160]">
+                          <div className="text-[8px] font-black text-zinc-500 uppercase tracking-widest px-2 py-1">Sleep Timer</div>
+                          {timerOptions.map((opt) => (
+                            <button
+                              key={opt.value}
+                              onClick={() => {
+                                setSleepTimer(opt.value);
+                                setShowTimerMenu(false);
+                              }}
+                              className={`w-full text-left px-2 py-1 text-xs font-semibold rounded transition ${
+                                sleepTimerMinutes === opt.value
+                                  ? theme === 'emerald' ? 'bg-green-500/20 text-green-400' : theme === 'sunset' ? 'bg-orange-500/20 text-orange-400' : theme === 'cyberpunk' ? 'bg-pink-500/20 text-pink-400' : theme === 'ocean' ? 'bg-cyan-500/20 text-cyan-400' : 'bg-violet-500/20 text-violet-400'
+                                  : 'text-zinc-300 hover:bg-zinc-800'
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                          {sleepTimerEnd && (
+                            <button
+                              onClick={() => {
+                                setSleepTimer(null);
+                                setShowTimerMenu(false);
+                              }}
+                              className="w-full text-left px-2 py-1 text-xs font-semibold text-red-400 hover:bg-red-500/10 mt-1 flex items-center gap-1 transition"
+                            >
+                              <X size={10} /> Cancel Timer
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Volume Slider Panel */}
+                  <div className="bg-zinc-900/40 border border-zinc-900/60 rounded-xl p-3 flex items-center gap-3">
+                    <button 
+                      onClick={() => setVolume(volume === 0 ? 0.8 : 0)}
+                      className="text-zinc-400 active:text-white transition flex-shrink-0"
+                    >
+                      {volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                    </button>
+                    <input 
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={volume}
+                      onChange={(e) => setVolume(Number(e.target.value))}
+                      className={`h-1.5 rounded-full flex-1 appearance-none cursor-pointer focus:outline-none bg-zinc-800 accent-${
+                        theme === 'emerald' ? 'green' : theme === 'sunset' ? 'orange' : theme === 'cyberpunk' ? 'pink' : theme === 'ocean' ? 'cyan' : 'violet'
+                      }-500`}
+                    />
+                    <span className="text-[10px] font-mono text-zinc-500 font-bold w-6 text-right">
+                      {Math.round(volume * 100)}%
+                    </span>
+                  </div>
+
+                  {/* Collapsible Mobile Queue Section (Shifting songs anywhere) */}
+                  <div className="border border-zinc-900 bg-zinc-950/40 rounded-xl overflow-hidden">
+                    <style dangerouslySetInnerHTML={{__html: `
+                      @keyframes eqBounce {
+                        0%, 100% { transform: scaleY(0.3); }
+                        50% { transform: scaleY(1); }
+                      }
+                      .animate-eq-bar-1 { animation: eqBounce 0.8s ease-in-out infinite; transform-origin: bottom; }
+                      .animate-eq-bar-2 { animation: eqBounce 1.2s ease-in-out infinite; transform-origin: bottom; }
+                      .animate-eq-bar-3 { animation: eqBounce 0.9s ease-in-out infinite; transform-origin: bottom; }
+                    `}} />
+                    
+                    <button
+                      onClick={() => setShowMobileQueue(!showMobileQueue)}
+                      className="w-full px-4 py-3 flex items-center justify-between text-xs font-bold text-zinc-400 border-b border-zinc-900 bg-zinc-950/60 active:bg-zinc-900 transition"
+                    >
+                      <span className="flex items-center gap-2">
+                        <ListMusic size={16} />
+                        <span>Music Queue ({queue.length} songs)</span>
+                      </span>
+                      <span className="text-[10px] uppercase text-zinc-500 tracking-wider">
+                        {showMobileQueue ? 'Hide Queue' : 'Tap to View'}
+                      </span>
+                    </button>
+
+                    {showMobileQueue && (
+                      <div className="max-h-60 overflow-y-auto divide-y divide-zinc-900/60 p-2 space-y-1 bg-zinc-950/80">
+                        {queue.map((song, idx) => {
+                          const isCurrent = idx === currentIndex;
+                          
+                          // Determine border color matching the theme
+                          const activeBorderClass = isCurrent
+                            ? theme === 'emerald' ? 'border-2 border-green-500 shadow-[0_0_12px_rgba(34,197,94,0.3)] bg-green-500/5' :
+                              theme === 'sunset' ? 'border-2 border-orange-500 shadow-[0_0_12px_rgba(249,115,22,0.3)] bg-orange-500/5' :
+                              theme === 'cyberpunk' ? 'border-2 border-pink-500 shadow-[0_0_12px_rgba(236,72,153,0.3)] bg-pink-500/5' :
+                              theme === 'ocean' ? 'border-2 border-cyan-500 shadow-[0_0_12px_rgba(6,182,212,0.3)] bg-cyan-500/5' :
+                              'border-2 border-violet-500 shadow-[0_0_12px_rgba(139,92,246,0.3)] bg-violet-500/5'
+                            : 'border border-zinc-900 bg-zinc-900/10';
+
+                          return (
+                            <div
+                              key={`${song.id}-mobile-queue-${idx}`}
+                              onClick={() => {
+                                if (!isCurrent) {
+                                  setSong(song, queue);
+                                  triggerToast(`🎵 Playing "${song.title}"`);
+                                }
+                              }}
+                              className={`flex items-center gap-3 p-2 rounded-lg transition min-w-0 ${activeBorderClass} ${isCurrent ? 'cursor-default' : 'cursor-pointer hover:bg-zinc-900/40 active:bg-zinc-900/70'}`}
+                            >
+                              {/* Album thumbnail */}
+                              <div className="w-10 h-10 rounded bg-zinc-800 flex-shrink-0 overflow-hidden relative flex items-center justify-center border border-zinc-700/30">
+                                {song.image ? (
+                                  <img src={song.image} alt={song.title} className="w-full h-full object-cover" />
+                                ) : (
+                                  <Music size={14} className="text-zinc-500" />
+                                )}
+
+                                {/* Equalizer Overlay for currently playing song */}
+                                {isCurrent && (
+                                  <div className="absolute inset-0 bg-black/60 flex items-center justify-center gap-[2px]">
+                                    <span className={`w-[3px] bg-white rounded-full ${isPlaying ? 'h-4 animate-eq-bar-1' : 'h-2'}`} />
+                                    <span className={`w-[3px] bg-white rounded-full ${isPlaying ? 'h-4 animate-eq-bar-2' : 'h-3'}`} />
+                                    <span className={`w-[3px] bg-white rounded-full ${isPlaying ? 'h-4 animate-eq-bar-3' : 'h-1.5'}`} />
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Song Details */}
+                              <div className="min-w-0 flex-1">
+                                <div className={`text-xs font-bold truncate ${isCurrent ? 'text-white' : 'text-zinc-200'}`}>
+                                  {song.title}
+                                </div>
+                                <div className="text-[10px] text-zinc-400 truncate mt-0.5">{song.artist}</div>
+                              </div>
+
+                              {/* Reordering and Shifting Action Buttons */}
+                              <div className="flex items-center gap-1.5 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                                {/* Move Up */}
+                                {idx > 0 && (
+                                  <button
+                                    onClick={() => {
+                                      moveQueueSong(idx, idx - 1);
+                                      triggerToast(`🔼 Moved "${song.title}" up`);
+                                    }}
+                                    className="w-7 h-7 bg-zinc-900 border border-zinc-800 rounded-full flex items-center justify-center text-zinc-400 active:text-white transition active:scale-90"
+                                    title="Move Up"
+                                  >
+                                    <ChevronUp size={14} />
+                                  </button>
+                                )}
+                                
+                                {/* Move Down */}
+                                {idx < queue.length - 1 && (
+                                  <button
+                                    onClick={() => {
+                                      moveQueueSong(idx, idx + 1);
+                                      triggerToast(`🔽 Moved "${song.title}" down`);
+                                    }}
+                                    className="w-7 h-7 bg-zinc-900 border border-zinc-800 rounded-full flex items-center justify-center text-zinc-400 active:text-white transition active:scale-90"
+                                    title="Move Down"
+                                  >
+                                    <ChevronDown size={14} />
+                                  </button>
+                                )}
+
+                                {/* Play Next (Zap) - only show for upcoming items further in queue */}
+                                {idx > currentIndex + 1 && (
+                                  <button
+                                    onClick={() => {
+                                      moveQueueSong(idx, currentIndex + 1);
+                                      triggerToast(`⚡ "${song.title}" is up next!`);
+                                    }}
+                                    className="w-7 h-7 bg-zinc-900 border border-zinc-800 rounded-full flex items-center justify-center text-zinc-400 hover:text-yellow-400 active:scale-90 transition"
+                                    title="Play Next"
+                                  >
+                                    <Zap size={12} className="text-yellow-500 fill-current" />
+                                  </button>
+                                )}
+
+                                {/* Remove Track */}
+                                <button
+                                  onClick={() => {
+                                    removeQueueSong(idx);
+                                    triggerToast(`🗑️ Removed "${song.title}"`);
+                                  }}
+                                  className="w-7 h-7 bg-red-950/20 border border-red-900/30 text-red-400 rounded-full flex items-center justify-center hover:bg-red-950/50 active:scale-90 transition"
+                                  title="Remove from Queue"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {queue.length === 0 && (
+                          <div className="py-8 text-center text-xs text-zinc-500 font-medium">
+                            Queue is empty. Add songs to play!
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Toolbar Options: Offline Downloads, Synced Lyrics Drawer, Speech Assistant */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      onClick={() => {
+                        handleDownload(currentSong);
+                      }}
+                      className="bg-zinc-900/60 border border-zinc-800/40 rounded-xl py-2.5 flex flex-col items-center justify-center gap-1 text-[10px] font-bold text-zinc-400 active:text-white transition active:scale-95"
+                    >
+                      <Download size={16} />
+                      <span>Download</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setShowLyrics(true);
+                      }}
+                      className={`bg-zinc-900/60 border border-zinc-800/40 rounded-xl py-2.5 flex flex-col items-center justify-center gap-1 text-[10px] font-bold active:text-white transition active:scale-95 ${
+                        showLyrics 
+                          ? theme === 'emerald' ? 'text-green-500 border-green-500/20' :
+                            theme === 'sunset' ? 'text-orange-500 border-orange-500/20' :
+                            theme === 'cyberpunk' ? 'text-pink-500 border-pink-500/20' :
+                            theme === 'ocean' ? 'text-cyan-500 border-cyan-500/20' :
+                            'text-violet-500 border-violet-500/20'
+                          : 'text-zinc-400'
+                      }`}
+                    >
+                      <Layers size={16} />
+                      <span>Lyrics</span>
+                    </button>
+
+                    <button
+                      onClick={startVoiceAssistant}
+                      className={`bg-zinc-900/60 border border-zinc-800/40 rounded-xl py-2.5 flex flex-col items-center justify-center gap-1 text-[10px] font-bold active:text-white transition active:scale-95 ${
+                        isListeningVoice ? 'text-red-400 animate-pulse border-red-500/20' : 'text-zinc-400'
+                      }`}
+                    >
+                      <Mic size={16} />
+                      <span>{isListeningVoice ? 'Listening...' : 'Voice AI'}</span>
+                    </button>
+                  </div>
+
+                  {/* Premium Warning Note explaining lockscreen restrictions */}
+                  <div className="bg-zinc-900/20 border border-zinc-900/40 rounded-xl p-3 text-[9px] text-zinc-500 font-semibold leading-normal text-center">
+                    ℹ️ OS notification drawer widgets only support standard Play/Pause/Next/Prev buttons. Custom buttons (like Like/Heart) cannot be injected into native mobile notifications, but are fully synced here inside the app!
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

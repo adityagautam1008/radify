@@ -54,6 +54,9 @@ interface PlayerState {
   toggleShuffle: () => void;
   setSleepTimer: (minutes: number | null) => void;
 
+  moveQueueSong: (fromIndex: number, toIndex: number) => void;
+  removeQueueSong: (index: number) => void;
+
   // Custom Personalization Actions
   addRecentSong: (song: Song) => void;
   createPlaylist: (name: string) => void;
@@ -207,6 +210,55 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         sleepTimerEnd: Date.now() + minutes * 60 * 1000,
       });
     }
+  },
+
+  moveQueueSong: (fromIndex, toIndex) => {
+    const { queue, currentIndex } = get();
+    if (fromIndex < 0 || fromIndex >= queue.length || toIndex < 0 || toIndex >= queue.length) return;
+
+    const updated = [...queue];
+    const [movedSong] = updated.splice(fromIndex, 1);
+    updated.splice(toIndex, 0, movedSong);
+
+    let newCurrentIndex = currentIndex;
+    if (currentIndex === fromIndex) {
+      newCurrentIndex = toIndex;
+    } else if (fromIndex < currentIndex && toIndex >= currentIndex) {
+      newCurrentIndex = currentIndex - 1;
+    } else if (fromIndex > currentIndex && toIndex <= currentIndex) {
+      newCurrentIndex = currentIndex + 1;
+    }
+
+    set({ queue: updated, currentIndex: newCurrentIndex });
+  },
+
+  removeQueueSong: (index) => {
+    const { queue, currentIndex, currentSong } = get();
+    if (index < 0 || index >= queue.length) return;
+
+    const updated = queue.filter((_, idx) => idx !== index);
+    
+    let newCurrentIndex = currentIndex;
+    let newCurrentSong = currentSong;
+    
+    if (currentIndex === index) {
+      if (updated.length > 0) {
+        newCurrentIndex = index >= updated.length ? 0 : index;
+        newCurrentSong = updated[newCurrentIndex];
+      } else {
+        newCurrentIndex = -1;
+        newCurrentSong = null;
+      }
+    } else if (index < currentIndex) {
+      newCurrentIndex = currentIndex - 1;
+    }
+
+    set({ 
+      queue: updated, 
+      currentIndex: newCurrentIndex,
+      currentSong: newCurrentSong,
+      isPlaying: updated.length > 0 ? get().isPlaying : false 
+    });
   },
 
   // HISTORY ACTIONS

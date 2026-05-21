@@ -192,13 +192,19 @@ export default function AudioPlayer() {
 
         // Update Media Session metadata for background/lock screen controls
         if ('mediaSession' in navigator) {
+          const artworkUrl = currentSong.image || '';
           navigator.mediaSession.metadata = new MediaMetadata({
             title: currentSong.title,
             artist: currentSong.artist,
             album: currentSong.album || 'ADIFY',
-            artwork: currentSong.image
+            artwork: artworkUrl
               ? [
-                  { src: currentSong.image, sizes: '512x512', type: 'image/jpeg' },
+                  { src: artworkUrl, sizes: '96x96', type: 'image/jpeg' },
+                  { src: artworkUrl, sizes: '128x128', type: 'image/jpeg' },
+                  { src: artworkUrl, sizes: '192x192', type: 'image/jpeg' },
+                  { src: artworkUrl, sizes: '256x256', type: 'image/jpeg' },
+                  { src: artworkUrl, sizes: '384x384', type: 'image/jpeg' },
+                  { src: artworkUrl, sizes: '512x512', type: 'image/jpeg' },
                 ]
               : [],
           });
@@ -263,33 +269,63 @@ export default function AudioPlayer() {
   useEffect(() => {
     if (!('mediaSession' in navigator)) return;
 
-    navigator.mediaSession.setActionHandler('play', () => play());
-    navigator.mediaSession.setActionHandler('pause', () => pause());
-    navigator.mediaSession.setActionHandler('previoustrack', () => prev());
-    navigator.mediaSession.setActionHandler('nexttrack', () => next());
-    navigator.mediaSession.setActionHandler('seekto', (details) => {
-      const audio = audioRef.current;
-      if (audio && details.seekTime != null) {
-        audio.currentTime = details.seekTime;
-        setTime(details.seekTime);
+    const actionHandlers: [string, ((details: any) => void) | (() => void)][] = [
+      ['play', () => play()],
+      ['pause', () => pause()],
+      ['previoustrack', () => prev()],
+      ['nexttrack', () => next()],
+      ['seekto', (details: any) => {
+        const audio = audioRef.current;
+        if (audio && details.seekTime != null) {
+          audio.currentTime = details.seekTime;
+          setTime(details.seekTime);
+        }
+      }],
+      ['seekbackward', (details: any) => {
+        const audio = audioRef.current;
+        if (audio) {
+          const offset = details.seekOffset || 10;
+          audio.currentTime = Math.max(0, audio.currentTime - offset);
+          setTime(audio.currentTime);
+        }
+      }],
+      ['seekforward', (details: any) => {
+        const audio = audioRef.current;
+        if (audio) {
+          const offset = details.seekOffset || 10;
+          audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + offset);
+          setTime(audio.currentTime);
+        }
+      }],
+      ['like', () => {
+        const state = usePlayerStore.getState();
+        if (state.currentSong) {
+          state.toggleLike(state.currentSong);
+        }
+      }],
+      ['dislike', () => {
+        const state = usePlayerStore.getState();
+        if (state.queue.length > 1) {
+          state.next();
+        }
+      }]
+    ];
+
+    for (const [action, handler] of actionHandlers) {
+      try {
+        navigator.mediaSession.setActionHandler(action as any, handler as any);
+      } catch (err) {
+        console.warn(`[MediaSession] Action "${action}" is not supported:`, err);
       }
-    });
-    navigator.mediaSession.setActionHandler('seekbackward', (details) => {
-      const audio = audioRef.current;
-      if (audio) {
-        const offset = details.seekOffset || 10;
-        audio.currentTime = Math.max(0, audio.currentTime - offset);
-        setTime(audio.currentTime);
+    }
+
+    return () => {
+      for (const [action] of actionHandlers) {
+        try {
+          navigator.mediaSession.setActionHandler(action as any, null);
+        } catch {}
       }
-    });
-    navigator.mediaSession.setActionHandler('seekforward', (details) => {
-      const audio = audioRef.current;
-      if (audio) {
-        const offset = details.seekOffset || 10;
-        audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + offset);
-        setTime(audio.currentTime);
-      }
-    });
+    };
   }, [play, pause, prev, next, setTime]);
 
   // Update Media Session playback state
