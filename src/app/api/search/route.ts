@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+export const dynamic = 'force-dynamic';
+
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { mapJioSaavnSong, fetchSaavnSongsWithFallback } from '@/lib/saavn';

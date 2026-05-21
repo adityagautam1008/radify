@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
+
 let cachedInstances: string[] = [];
 let lastFetchTime = 0;
 
@@ -120,7 +123,7 @@ export async function GET(request: NextRequest) {
       status: 307,
       headers: {
         'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'public, max-age=3600',
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
       }
     });
   } catch (error: any) {
