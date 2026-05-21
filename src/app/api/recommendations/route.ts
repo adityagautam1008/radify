@@ -1,28 +1,8 @@
 import { NextResponse } from 'next/server';
-import { mapJioSaavnSong } from '@/lib/saavn';
+import { mapJioSaavnSong, fetchSaavnSongsWithFallback } from '@/lib/saavn';
 
 async function fetchSongsByArtist(artist: string): Promise<any[]> {
-  try {
-    const response = await fetch(
-      `https://www.jiosaavn.com/api.php?__call=search.getResults&q=${encodeURIComponent(
-        artist
-      )}&_format=json&_marker=0&ctx=web6dot0&n=8`
-    );
-
-    if (!response.ok) {
-      return [];
-    }
-
-    const data = await response.json();
-    if (!data.results || !Array.isArray(data.results)) {
-      return [];
-    }
-
-    return data.results.map((song: any) => mapJioSaavnSong(song));
-  } catch (error) {
-    console.error(`Error fetching recommendations for artist "${artist}":`, error);
-    return [];
-  }
+  return fetchSaavnSongsWithFallback(artist, 8);
 }
 
 export async function GET(request: Request) {

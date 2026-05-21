@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { mapJioSaavnSong } from '@/lib/saavn';
+import { mapJioSaavnSong, fetchSaavnSongsWithFallback } from '@/lib/saavn';
 
 const execAsync = promisify(exec);
 
@@ -51,29 +51,7 @@ export async function getInvidiousInstances(): Promise<string[]> {
   ];
 }
 
-async function fetchSaavnSongs(query: string): Promise<any[]> {
-  try {
-    const response = await fetch(
-      `https://www.jiosaavn.com/api.php?__call=search.getResults&q=${encodeURIComponent(
-        query
-      )}&_format=json&_marker=0&ctx=web6dot0&n=12`
-    );
 
-    if (!response.ok) {
-      throw new Error('JioSaavn API responded with an error');
-    }
-
-    const data = await response.json();
-    if (!data.results || !Array.isArray(data.results)) {
-      return [];
-    }
-
-    return data.results.map((song: any) => mapJioSaavnSong(song));
-  } catch (error) {
-    console.error('Saavn fetch failed:', error);
-    return [];
-  }
-}
 
 async function searchInvidious(query: string): Promise<any[]> {
   const instances = await getInvidiousInstances();
@@ -163,7 +141,7 @@ export async function GET(request: Request) {
 
   try {
     const [saavnSongs, ytSongs] = await Promise.all([
-      fetchSaavnSongs(query),
+      fetchSaavnSongsWithFallback(query, 12),
       searchYouTube(query)
     ]);
 

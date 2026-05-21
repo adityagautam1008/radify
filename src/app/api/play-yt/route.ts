@@ -8,6 +8,93 @@ const execAsync = promisify(exec);
 const streamCache = new Map<string, { url: string; ts: number }>();
 const CACHE_TTL = 4 * 60 * 60 * 1000; // 4 hours
 
+let cachedInstances: string[] = [];
+let lastFetchTime = 0;
+
+async function getInvidiousInstances(): Promise<string[]> {
+  const now = Date.now();
+  if (cachedInstances.length > 0 && now - lastFetchTime < 3600 * 1000) {
+    return cachedInstances;
+  }
+
+  try {
+    const res = await fetch('https://api.invidious.io/instances.json?sort_by=api,type');
+    if (res.ok) {
+      const data = await res.json();
+      const active: string[] = [];
+      for (const item of data) {
+        const hostname = item[0];
+        const info = item[1];
+        if (
+          info.api === true &&
+          info.type === 'https' &&
+          info.uri &&
+          !info.uri.includes('.onion') &&
+          !info.uri.includes('.i2p')
+        ) {
+          active.push(info.uri);
+        }
+      }
+      if (active.length > 0) {
+        cachedInstances = active;
+        lastFetchTime = now;
+        return active;
+      }
+    }
+  } catch (err) {
+    console.error('Error fetching invidious instances:', err);
+  }
+
+  return [
+    'https://inv.thepixora.com',
+    'https://yewtu.be',
+    'https://vid.puffyan.us',
+  ];
+}
+
+async function resolveStreamUrlInvidious(videoId: string): Promise<string | null> {
+  const instances = await getInvidiousInstances();
+  const maxAttempts = Math.min(instances.length, 4);
+
+  for (let i = 0; i < maxAttempts; i++) {
+    const instance = instances[i];
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+      const res = await fetch(`${instance}/api/v1/videos/${videoId}`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.adaptiveFormats)) {
+          const formats = data.adaptiveFormats;
+          const bestAudio = 
+            formats.find((f: any) => String(f.itag) === '140') ||
+            formats.find((f: any) => String(f.itag) === '251') ||
+            formats.find((f: any) => f.container === 'm4a') ||
+            formats.find((f: any) => f.type && f.type.startsWith('audio/'));
+
+          if (bestAudio && bestAudio.url) {
+            return bestAudio.url;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(`Invidious audio resolution failed on instance ${instance}:`, err);
+    }
+  }
+
+  // Fallback to latest_version redirect endpoint
+  if (instances.length > 0) {
+    return `${instances[0]}/latest_version?id=${videoId}&itag=140`;
+  }
+
+  return null;
+}
+
 async function resolveStreamUrl(videoId: string): Promise<string | null> {
   // Check cache
   const cached = streamCache.get(videoId);
@@ -15,12 +102,11 @@ async function resolveStreamUrl(videoId: string): Promise<string | null> {
     return cached.url;
   }
 
+  // 1. Try yt-dlp first (ideal for local development)
   try {
-    // Use yt-dlp to extract the direct audio stream URL (m4a AAC, best quality)
-    // The android player client is faster and avoids some anti-bot challenges
     const { stdout, stderr } = await execAsync(
       `yt-dlp -f 140/bestaudio --get-url --no-warnings --no-check-certificates --extractor-args "youtube:player_client=android_vr" "https://www.youtube.com/watch?v=${videoId}"`,
-      { timeout: 50000 }
+      { timeout: 15000 }
     );
 
     const url = stdout.trim();
@@ -30,11 +116,18 @@ async function resolveStreamUrl(videoId: string): Promise<string | null> {
     }
 
     console.error('yt-dlp returned unexpected output:', stderr || url);
-    return null;
   } catch (error: any) {
-    console.error('yt-dlp extraction failed:', error.message);
-    return null;
+    console.warn('yt-dlp extraction failed, falling back to Invidious:', error.message);
   }
+
+  // 2. Fallback to Invidious
+  const invidiousUrl = await resolveStreamUrlInvidious(videoId);
+  if (invidiousUrl) {
+    streamCache.set(videoId, { url: invidiousUrl, ts: Date.now() });
+    return invidiousUrl;
+  }
+
+  return null;
 }
 
 export async function GET(request: NextRequest) {

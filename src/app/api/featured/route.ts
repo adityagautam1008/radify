@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { fetchSaavnPlaylist, mapJioSaavnSong } from '@/lib/saavn';
+import { fetchSaavnPlaylist, mapJioSaavnSong, fetchSaavnSongsWithFallback } from '@/lib/saavn';
 
 const PLAYLIST_MAP: Record<string, string> = {
   hindi: '1134543272',
@@ -58,23 +58,7 @@ export async function GET(request: Request) {
           songs = await fetchSaavnPlaylist(playlistId);
         } else {
           // Dynamic query search for custom regional or global languages!
-          try {
-            // Search for "[language] hits" or "[language] songs"
-            const query = `${lang} hits`;
-            const searchResponse = await fetch(
-              `https://www.jiosaavn.com/api.php?__call=search.getResults&q=${encodeURIComponent(
-                query
-              )}&_format=json&_marker=0&ctx=web6dot0&n=20`
-            );
-            if (searchResponse.ok) {
-              const data = await searchResponse.json();
-              if (data.results && Array.isArray(data.results)) {
-                songs = data.results.map((song: any) => mapJioSaavnSong(song));
-              }
-            }
-          } catch (searchErr) {
-            console.error(`Dynamic search failed for custom language "${lang}":`, searchErr);
-          }
+          songs = await fetchSaavnSongsWithFallback(`${lang} hits`, 20);
         }
         
         // Limit to 20 songs per chart to keep payloads lightweight and speedy
