@@ -458,19 +458,12 @@ export default function AudioPlayer() {
     const audio = audioRef.current;
     if (!audio) return;
     
+    // Only seek if the difference is significant to avoid rounding loops
     if (Math.abs(audio.currentTime - currentTime) > 1.5) {
-      seekLockRef.current = true;
+      // seekLockRef is now correctly managed by the native 'seeking' and 'seeked' events!
       audio.currentTime = currentTime;
-      setTimeout(() => { seekLockRef.current = false; }, 300);
     }
   }, [currentTime]);
-
-  // Expose seek lock control to page.tsx
-  useEffect(() => {
-    (window as any).__adifySeekLock = (lock: boolean) => {
-      seekLockRef.current = lock;
-    };
-  }, []);
 
   // Register Media Session action handlers for background playback controls
   useEffect(() => {

@@ -1580,9 +1580,6 @@ export default function AppHome() {
   const handleSeekStart = () => {
     setIsSeeking(true);
     setTempSeekTime(currentTime);
-    if ((window as any).__adifySeekLock) {
-      (window as any).__adifySeekLock(true);
-    }
   };
 
   const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1592,11 +1589,6 @@ export default function AppHome() {
   const handleSeekEnd = () => {
     setTime(tempSeekTime);
     setIsSeeking(false);
-    setTimeout(() => {
-      if ((window as any).__adifySeekLock) {
-        (window as any).__adifySeekLock(false);
-      }
-    }, 350);
   };
 
   const timerOptions = [
