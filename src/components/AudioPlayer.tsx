@@ -489,24 +489,22 @@ export default function AudioPlayer() {
     audio.volume = volume;
   }, [volume]);
 
-  // Expose direct seek control to bypass React state race conditions
+  // Sync seek when user commits a seek from the UI
   useEffect(() => {
-    (window as any).__adifySeekTo = (time: number) => {
-      const audio = audioRef.current;
-      if (!audio) return;
-      
+    const audio = audioRef.current;
+    if (!audio) return;
+    
+    if (Math.abs(audio.currentTime - currentTime) > 1.5) {
       seekLockRef.current = true;
-      try {
-        audio.currentTime = time;
-        // The `seeking` and `seeked` native events will handle unlocking
-      } catch (err) {
-        console.warn('[AudioPlayer] Failed to seek:', err);
-        seekLockRef.current = false;
-      }
-    };
+      audio.currentTime = currentTime;
+      setTimeout(() => { seekLockRef.current = false; }, 300);
+    }
+  }, [currentTime]);
 
-    return () => {
-      delete (window as any).__adifySeekTo;
+  // Expose seek lock control to page.tsx
+  useEffect(() => {
+    (window as any).__adifySeekLock = (lock: boolean) => {
+      seekLockRef.current = lock;
     };
   }, []);
 
