@@ -387,25 +387,6 @@ export default function AudioPlayer() {
           return;
         }
 
-        // --- CRITICAL FIX FOR VERCEL DEPLOYMENTS ---
-        // If the URL is our proxy endpoint, fetch the DIRECT stream URL first!
-        // This stops Vercel from timing out after 10s because the browser will stream
-        // the audio straight from the external server instead of proxying through Vercel.
-        if (streamUrl.startsWith('/api/play-yt')) {
-          try {
-            const separator = streamUrl.includes('?') ? '&' : '?';
-            const resolveUrl = `${streamUrl}${separator}json=true`;
-            const res = await fetch(resolveUrl);
-            const data = await res.json();
-            if (data.streamUrl) {
-              streamUrl = data.streamUrl;
-              console.log('[AudioPlayer] Resolved direct streaming URL to bypass Vercel proxy.');
-            }
-          } catch (e) {
-            console.error('[AudioPlayer] Failed to resolve direct stream URL, falling back to proxy...', e);
-          }
-        }
-
         if (!active || loadToken !== songLoadTokenRef.current) return;
 
         setIsBuffering(true);

@@ -132,38 +132,61 @@ export async function GET(request: NextRequest) {
     'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0'
   };
 
-  // 1. Cached direct URL
-  if (!nocache && resolvedCache.has(id)) {
-    const cachedUrl = resolvedCache.get(id)!.url;
-    if (json) return NextResponse.json({ streamUrl: cachedUrl }, { headers: corsHeaders });
-    return NextResponse.redirect(cachedUrl, 302);
-  }
+  const range = request.headers.get('range') || 'bytes=0-';
 
-  // 2. Try Piped API (Fastest and most reliable for direct URLs)
+  const proxyStream = async (url: string) => {
+    try {
+      const fetchRes = await fetch(url, {
+        headers: {
+          'Range': range,
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        }
+      });
+
+      if (!fetchRes.ok && fetchRes.status !== 206) {
+        return null;
+      }
+
+      // Pass all relevant streaming headers back to the client
+      const headers = new Headers();
+      headers.set('Access-Control-Allow-Origin', '*');
+      headers.set('Content-Type', fetchRes.headers.get('content-type') || 'audio/mp4');
+      headers.set('Accept-Ranges', 'bytes');
+      if (fetchRes.headers.has('content-length')) {
+        headers.set('Content-Length', fetchRes.headers.get('content-length')!);
+      }
+      if (fetchRes.headers.has('content-range')) {
+        headers.set('Content-Range', fetchRes.headers.get('content-range')!);
+      }
+
+      return new NextResponse(fetchRes.body as any, {
+        status: fetchRes.status === 206 ? 206 : 200,
+        headers,
+      });
+    } catch (e) {
+      return null;
+    }
+  };
+
+  // 1. Try Piped API (Fastest to resolve)
   const pipedUrl = await getPipedStream(id);
   if (pipedUrl) {
-    resolvedCache.set(id, { url: pipedUrl, timestamp: Date.now() });
-    if (json) return NextResponse.json({ streamUrl: pipedUrl }, { headers: corsHeaders });
-    return NextResponse.redirect(pipedUrl, 302);
+    const res = await proxyStream(pipedUrl);
+    if (res) return res;
   }
 
-  // 3. Try yt-dlp binary (if available locally)
-  const ytdlpUrl = await getAudioUrl(id);
-  if (ytdlpUrl) {
-    resolvedCache.set(id, { url: ytdlpUrl, timestamp: Date.now() });
-    if (json) return NextResponse.json({ streamUrl: ytdlpUrl }, { headers: corsHeaders });
-    return NextResponse.redirect(ytdlpUrl, 302);
-  }
-
-  // 4. Try Invidious /latest_version direct redirect
+  // 2. Try Invidious /latest_version direct redirect
   const instances = await getInvidiousInstances();
-  if (instances.length > 0) {
-    const invUrl = `${instances[0]}/latest_version?id=${id}&itag=140&local=true`;
-    if (json) return NextResponse.json({ streamUrl: invUrl }, { headers: corsHeaders });
+  for (const instance of instances) {
+    const invUrl = `${instance}/latest_version?id=${id}&itag=140&local=true`;
+    if (json) {
+       // Only return json if explicitly asked (fallback)
+       return NextResponse.json({ streamUrl: invUrl }, { headers: corsHeaders });
+    }
     return NextResponse.redirect(invUrl, 302);
   }
 
-  // If all fails, return an error (DO NOT fallback to Saavn randomly, as it causes "wrong song" bugs)
+  // If all fails, return an error
   console.error(`[play-yt] All streaming paths failed for video ${id}`);
   return NextResponse.json(
     { error: 'All streaming resolution paths failed. Please try a different track.' },
