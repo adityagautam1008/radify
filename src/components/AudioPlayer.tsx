@@ -27,6 +27,7 @@ if (typeof window !== 'undefined') {
 export default function AudioPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const seekLockRef = useRef(false);
+  const ignorePauseRef = useRef(false);
   const skipAfterErrorRef = useRef<number | null>(null);
   const songLoadTokenRef = useRef(0);
   const retryCountRef = useRef(0);
@@ -56,19 +57,27 @@ export default function AudioPlayer() {
 
     const handlePlay = () => play();
     const handlePause = () => {
-      pause();
       setIsBuffering(false);
+      if (ignorePauseRef.current) {
+        console.log('[AudioPlayer] Ignoring pause event during stream swap');
+        return;
+      }
+      // Only sync state if it isn't the dummy silent WAV pausing itself
+      if (!audio.src.startsWith('data:')) {
+        pause();
+      }
     };
     const handleEnded = () => {
       if (audio.src.startsWith('data:')) {
         console.log('[AudioPlayer] Suppressed ended event on silent transition WAV');
         return;
       }
-      // Only suppress if the audio barely played at all (false alarm / aborted load)
-      if (audio.currentTime < 3) {
-        console.warn('[AudioPlayer] Suppressed false ended event. CurrentTime:', audio.currentTime, 'Duration:', audio.duration);
+      // If the duration is valid and the track ended naturally...
+      if (audio.duration && audio.duration > 0 && Math.abs(audio.duration - audio.currentTime) > 5) {
+        console.log(`[AudioPlayer] Suppressed ended event. Duration: ${audio.duration}, Current: ${audio.currentTime}`);
         return;
       }
+      console.log('[AudioPlayer] Track ended naturally, proceeding to next song');
       next();
     };
     const handleError = () => {
@@ -106,6 +115,7 @@ export default function AudioPlayer() {
         const freshUrl = `/api/play-yt?id=${videoId}&title=${encodeURIComponent(state.currentSong.title)}&artist=${encodeURIComponent(state.currentSong.artist)}&nocache=true&ts=${Date.now()}`;
         
         setIsBuffering(true);
+        ignorePauseRef.current = true;
         
         // Fetch the direct URL to bypass Vercel timeouts even during recovery
         fetch(`${freshUrl}&json=true`)
@@ -131,6 +141,9 @@ export default function AudioPlayer() {
                 audio.play().catch(() => {});
               }
             }
+          })
+          .finally(() => {
+            setTimeout(() => { ignorePauseRef.current = false; }, 1000);
           });
         
         if (typeof window !== 'undefined' && (window as any).__adifyTriggerToast) {
@@ -148,6 +161,7 @@ export default function AudioPlayer() {
         
         setIsBuffering(true);
         const currentSongId = state.currentSong.id;
+        ignorePauseRef.current = true;
         
         fetch(`/api/search?id=${encodeURIComponent(currentSongId)}`)
           .then(res => res.json())
@@ -172,6 +186,9 @@ export default function AudioPlayer() {
             if (typeof window !== 'undefined' && (window as any).__adifyTriggerToast) {
               (window as any).__adifyTriggerToast("Stream expired. Please try again.");
             }
+          })
+          .finally(() => {
+             setTimeout(() => { ignorePauseRef.current = false; }, 1000);
           });
         return;
       }
@@ -185,7 +202,7 @@ export default function AudioPlayer() {
     };
     
     const handleTimeUpdate = () => {
-      if (!seekLockRef.current) {
+      if (!seekLockRef.current && !audio.seeking) {
         setTime(audio.currentTime);
       }
     };
@@ -249,10 +266,14 @@ export default function AudioPlayer() {
 
     const handleSeeking = () => {
       setIsBuffering(true);
+      seekLockRef.current = true;
     };
 
     const handleSeeked = () => {
       setIsBuffering(false);
+      seekLockRef.current = false;
+      // Force a time update once seek completes
+      setTime(audio.currentTime);
     };
 
     audio.addEventListener('play', handlePlay);
@@ -388,8 +409,10 @@ export default function AudioPlayer() {
         if (!active || loadToken !== songLoadTokenRef.current) return;
 
         setIsBuffering(true);
+        ignorePauseRef.current = true;
         audio.src = streamUrl;
         audio.load();
+        setTimeout(() => { ignorePauseRef.current = false; }, 1000);
 
         // Trigger play as soon as canplay fires (handled in handleCanPlay/handleCanPlayThrough),
         // but also attempt it immediately — the browser will queue it once data is ready.
