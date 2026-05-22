@@ -584,21 +584,64 @@ export default function AudioPlayer() {
   }, [isPlaying]);
 
   // Update Media Session position state periodically
+  // Update Media Session position state periodically
   useEffect(() => {
     if (!('mediaSession' in navigator)) return;
-    const audio = audioRef.current;
-    if (!audio || !audio.duration || isNaN(audio.duration)) return;
+    
+    const interval = setInterval(() => {
+      const audio = audioRef.current;
+      if (!audio || !audio.duration || isNaN(audio.duration)) return;
+      try {
+        navigator.mediaSession.setPositionState({
+          duration: audio.duration,
+          playbackRate: audio.playbackRate,
+          position: Math.min(audio.currentTime, audio.duration),
+        });
+      } catch {
+        // setPositionState can throw if values are invalid
+      }
+    }, 1000);
 
-    try {
-      navigator.mediaSession.setPositionState({
-        duration: audio.duration,
-        playbackRate: audio.playbackRate,
-        position: Math.min(audio.currentTime, audio.duration),
-      });
-    } catch {
-      // setPositionState can throw if values are invalid
-    }
-  }, [currentTime]);
+    return () => clearInterval(interval);
+  }, [isPlaying]);
+
+  // --- SPOTIFY-STYLE PREDICTIVE PRE-FETCHING ---
+  // Background preloader for the NEXT song in the queue
+  useEffect(() => {
+    const state = usePlayerStore.getState();
+    const { queue, currentIndex } = state;
+    if (!queue || queue.length === 0 || currentIndex < 0 || currentIndex >= queue.length - 1) return;
+
+    const nextSong = queue[currentIndex + 1];
+    if (!nextSong) return;
+
+    const prefetchTimer = setTimeout(async () => {
+      try {
+        let prefetchUrl = '';
+        if (nextSong.source === 'youtube') {
+          const videoId = nextSong.id.replace('youtube-', '');
+          const res = await fetch(`/api/play-yt?id=${videoId}&title=${encodeURIComponent(nextSong.title)}&artist=${encodeURIComponent(nextSong.artist)}&nocache=true&ts=${Date.now()}&json=true`);
+          const data = await res.json();
+          if (data.streamUrl) prefetchUrl = data.streamUrl;
+        } else if (nextSong.source === 'saavn') {
+          prefetchUrl = nextSong.streamUrl_high || nextSong.streamUrl || nextSong.streamUrl_med;
+        }
+
+        if (prefetchUrl) {
+          // Use a detached audio object to prefetch the media chunk into the browser's memory cache
+          const prefetchAudio = new Audio();
+          prefetchAudio.muted = true;
+          prefetchAudio.preload = 'metadata'; // Forces download of the first few chunks
+          prefetchAudio.src = prefetchUrl;
+          console.log(`[Prefetcher] Successfully preloaded next track: ${nextSong.title}`);
+        }
+      } catch (err) {
+        console.warn('[Prefetcher] Failed to preload next track:', err);
+      }
+    }, 3000); // Wait 3 seconds after current song starts before stealing bandwidth for prefetch
+
+    return () => clearTimeout(prefetchTimer);
+  }, [currentSong]);
 
   return null;
 }
