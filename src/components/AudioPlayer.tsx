@@ -624,7 +624,7 @@ export default function AudioPlayer() {
           const data = await res.json();
           if (data.streamUrl) prefetchUrl = data.streamUrl;
         } else if (nextSong.source === 'saavn') {
-          prefetchUrl = nextSong.streamUrl_high || nextSong.streamUrl || nextSong.streamUrl_med;
+          prefetchUrl = nextSong.streamUrl_high || nextSong.streamUrl || nextSong.streamUrl_med || '';
         }
 
         if (prefetchUrl) {
