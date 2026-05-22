@@ -214,8 +214,6 @@ export async function fetchSaavnSongsWithFallback(query: string, limit = 12): Pr
     }
   }
 
-  }
-
   return [];
 }
 
