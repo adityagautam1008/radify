@@ -114,17 +114,29 @@ export default function AudioPlayer() {
         const videoId = currentSongId.replace('youtube-', '');
         const freshUrl = `/api/play-yt?id=${videoId}&nocache=true&ts=${Date.now()}`;
         
-        setIsBuffering(true);
-        ignorePauseRef.current = true;
-        
-        // Simple fallback to our powerful new ytdl-core Node.js proxy route!
+        // Try to recover via Frankenstein approach first!
         const currentState = usePlayerStore.getState();
         if (currentState.currentSong?.id === currentSongId) {
-          const proxyUrl = `/api/stream-yt?id=${videoId}&nocache=true&ts=${Date.now()}`;
-          audio.src = proxyUrl;
-          audio.load();
-          if (currentState.isPlaying) {
-            audio.play().catch(() => {});
+          try {
+            console.log('[AudioPlayer] Error recovery: Mapping YouTube track to Saavn audio backend...');
+            const searchTitle = currentState.currentSong.title.replace(/\[.*?\]/g, '').replace(/\(.*?\)/g, '').replace(/official/i, '').replace(/video/i, '').replace(/audio/i, '').trim();
+            const res = await fetch(`/api/search?query=${encodeURIComponent(searchTitle + ' ' + (currentState.currentSong.artist || ''))}`);
+            let recoveredUrl = null;
+            if (res.ok) {
+              const data = await res.json();
+              const saavnMatch = data.songs?.find((s: any) => !s.id.startsWith('youtube-') && (s.streamUrl_high || s.streamUrl));
+              if (saavnMatch) recoveredUrl = saavnMatch.streamUrl_high || saavnMatch.streamUrl;
+            }
+            
+            audio.src = recoveredUrl || `/api/stream-yt?id=${videoId}&nocache=true&ts=${Date.now()}`;
+            audio.load();
+            if (currentState.isPlaying) {
+              audio.play().catch(() => {});
+            }
+          } catch(e) {
+            audio.src = `/api/stream-yt?id=${videoId}&nocache=true&ts=${Date.now()}`;
+            audio.load();
+            if (currentState.isPlaying) audio.play().catch(() => {});
           }
         }
         
@@ -371,11 +383,43 @@ export default function AudioPlayer() {
           return;
         }
 
-        if (!active || loadToken !== songLoadTokenRef.current) return;
-
-        // If it is a YouTube URL mapped to the old play-yt route, swap it to our new bulletproof stream-yt proxy!
-        if (streamUrl.startsWith('/api/play-yt')) {
-          streamUrl = streamUrl.replace('/api/play-yt', '/api/stream-yt');
+        // --- FRANKENSTEIN APPROACH (YOUTUBE METADATA + SAAVN AUDIO) ---
+        // Vercel completely kills streaming proxy connections after 10-15s, making proxying impossible.
+        // To bypass this, we silently map the YouTube track to JioSaavn's official 320kbps CDN stream!
+        if (currentSong.id.startsWith('youtube-') && !objectUrl) {
+          try {
+            console.log('[AudioPlayer] Mapping YouTube track to Saavn audio backend...');
+            // Clean the title for better search results
+            let searchTitle = currentSong.title
+              .replace(/\[.*?\]/g, '')
+              .replace(/\(.*?\)/g, '')
+              .replace(/official/i, '')
+              .replace(/video/i, '')
+              .replace(/audio/i, '')
+              .replace(/lyric/i, '')
+              .replace(/music/i, '')
+              .replace(/hd/i, '')
+              .trim();
+              
+            const searchTerms = encodeURIComponent(`${searchTitle} ${currentSong.artist || ''}`);
+            const res = await fetch(`/api/search?query=${searchTerms}`);
+            if (res.ok) {
+              const data = await res.json();
+              const saavnMatch = data.songs?.find((s: any) => !s.id.startsWith('youtube-') && (s.streamUrl_high || s.streamUrl));
+              if (saavnMatch) {
+                console.log('[AudioPlayer] Successfully mapped to Saavn stream:', saavnMatch.title);
+                streamUrl = saavnMatch.streamUrl_high || saavnMatch.streamUrl || streamUrl;
+              } else {
+                 console.log('[AudioPlayer] Saavn mapping failed, falling back to YouTube direct stream...');
+                 streamUrl = streamUrl.replace('/api/play-yt', '/api/stream-yt');
+              }
+            } else {
+               streamUrl = streamUrl.replace('/api/play-yt', '/api/stream-yt');
+            }
+          } catch (e) {
+            console.error('[AudioPlayer] Failed to map YouTube track to Saavn.', e);
+            streamUrl = streamUrl.replace('/api/play-yt', '/api/stream-yt');
+          }
         }
 
         if (!active || loadToken !== songLoadTokenRef.current) return;
