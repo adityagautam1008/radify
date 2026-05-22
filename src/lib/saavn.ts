@@ -214,5 +214,51 @@ export async function fetchSaavnSongsWithFallback(query: string, limit = 12): Pr
     }
   }
 
+  }
+
   return [];
+}
+
+export async function fetchSaavnSongDetails(id: string): Promise<any | null> {
+  // 1. Try direct fetch
+  try {
+    const response = await fetch(
+      `https://www.jiosaavn.com/api.php?__call=song.getDetails&pids=${id}&_format=json&_marker=0&ctx=web6dot0`
+    );
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data && data[id]) {
+        return mapJioSaavnSong(data[id]);
+      }
+    }
+  } catch (error) {
+    console.warn(`Direct fetch for song "${id}" failed. Trying fallback proxies...`, error);
+  }
+
+  // 2. Try proxy fallbacks
+  const fallbackHosts = [
+    'https://saavn.dev',
+    'https://saavn.sumit.co',
+    'https://jiosaavn-api-beta.vercel.app'
+  ];
+
+  for (const host of fallbackHosts) {
+    try {
+      const response = await fetch(`${host}/api/songs?ids=${id}`);
+      if (response.ok) {
+        const payload = await response.json();
+        const results = payload.data?.songs || payload.data || payload.results;
+        if (Array.isArray(results) && results.length > 0) {
+          return mapProxySaavnSong(results[0]);
+        } else if (results && !Array.isArray(results) && results.id) {
+           return mapProxySaavnSong(results);
+        }
+      }
+    } catch (err) {
+      console.warn(`Fallback proxy ${host} song fetch failed for "${id}":`, err);
+    }
+  }
+
+  return null;
 }

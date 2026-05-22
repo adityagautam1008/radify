@@ -258,12 +258,22 @@ async function searchYouTube(query: string): Promise<any[]> {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get('query');
-
-  if (!query) {
-    return NextResponse.json({ error: 'Query parameter is required' }, { status: 400 });
-  }
+  const id = searchParams.get('id');
 
   try {
+    if (id) {
+      const { fetchSaavnSongDetails } = await import('@/lib/saavn');
+      const song = await fetchSaavnSongDetails(id);
+      if (song) {
+        return NextResponse.json({ song });
+      }
+      return NextResponse.json({ error: 'Song not found' }, { status: 404 });
+    }
+
+    if (!query) {
+      return NextResponse.json({ error: 'Query or id parameter is required' }, { status: 400 });
+    }
+
     const [saavnSongs, ytSongs] = await Promise.all([
       fetchSaavnSongsWithFallback(query, 12),
       searchYouTube(query)

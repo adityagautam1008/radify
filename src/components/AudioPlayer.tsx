@@ -139,6 +139,43 @@ export default function AudioPlayer() {
         return;
       }
 
+      // Failover and recovery for Saavn songs (mostly token expiry)
+      if (state.currentSong.source === 'saavn' && retryCountRef.current < 2) {
+        retryCountRef.current++;
+        const savedTime = audio.currentTime;
+        restoreTimeRef.current = savedTime;
+        console.log(`[AudioPlayer] Recovering Saavn stream. Attempt: ${retryCountRef.current}. Saved position: ${savedTime}`);
+        
+        setIsBuffering(true);
+        const currentSongId = state.currentSong.id;
+        
+        fetch(`/api/search?id=${encodeURIComponent(currentSongId)}`)
+          .then(res => res.json())
+          .then(data => {
+            const currentState = usePlayerStore.getState();
+            if (currentState.currentSong?.id === currentSongId && data.song) {
+              const freshSong = data.song;
+              const freshUrl = freshSong.streamUrl_high || freshSong.streamUrl || freshSong.streamUrl_med;
+              if (freshUrl) {
+                console.log('[AudioPlayer] Fetched fresh Saavn URL:', freshUrl.substring(0, 50));
+                audio.src = freshUrl;
+                audio.load();
+                if (currentState.isPlaying) {
+                  audio.play().catch(() => {});
+                }
+              }
+            }
+          })
+          .catch(e => {
+            console.error('[AudioPlayer] Failed to recover Saavn stream:', e);
+            pause();
+            if (typeof window !== 'undefined' && (window as any).__adifyTriggerToast) {
+              (window as any).__adifyTriggerToast("Stream expired. Please try again.");
+            }
+          });
+        return;
+      }
+
       console.error('[AudioPlayer] Legitimate stream error. Pausing playback.');
       pause();
       
@@ -402,12 +439,20 @@ export default function AudioPlayer() {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    // Don't act on the silent placeholder WAV – wait for the real src
-    if (!audio.src || audio.src.startsWith('data:') || audio.src === window.location.href) return;
+    
+    // We MUST call play() here even if the src is the silent data: WAV.
+    // This is a crucial trick for iOS/Safari: by starting playback of silence synchronously
+    // in response to the user click (which triggered isPlaying=true), we retain the 
+    // user gesture token. When the async stream fetch finishes, we can swap the src and play without being blocked.
+    if (!audio.src || audio.src === window.location.href) return;
 
     if (isPlaying) {
-      audio.play().catch(() => {
-        pause();
+      audio.play().catch((e) => {
+        console.warn('[AudioPlayer] Play effect blocked:', e);
+        // Only pause if it's not the silent placeholder (which sometimes fails harmlessly)
+        if (!audio.src.startsWith('data:')) {
+          pause();
+        }
       });
     } else {
       audio.pause();
