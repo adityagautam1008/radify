@@ -110,28 +110,55 @@ export default function AudioPlayer() {
         restoreTimeRef.current = savedTime;
         console.log(`[AudioPlayer] Recovering YouTube stream. Attempt: ${retryCountRef.current}. Saved position: ${savedTime}`);
         
-        const currentSong = state.currentSong;
-        const currentSongId = currentSong.id;
-        
-        let baseStreamUrl = currentSong.streamUrl || `/api/search?id=${currentSongId}`; // Fallback if no streamUrl
-        const freshUrl = baseStreamUrl.includes('?') 
-          ? `${baseStreamUrl}&nocache=true&ts=${Date.now()}` 
-          : `${baseStreamUrl}?nocache=true&ts=${Date.now()}`;
+        const currentSongId = state.currentSong.id;
+        const videoId = currentSongId.replace('youtube-', '');
+        const freshUrl = `/api/play-yt?id=${videoId}&nocache=true&ts=${Date.now()}`;
         
         setIsBuffering(true);
         ignorePauseRef.current = true;
         
-        // Simple fallback to the backend proxy routes (Spotify/SoundCloud/Audiomack)
-        const currentState = usePlayerStore.getState();
-        if (currentState.currentSong?.id === currentSongId) {
-          audio.src = freshUrl;
-          audio.load();
-          if (currentState.isPlaying) {
-            audio.play().catch(() => {});
-          }
-        }
+        // Client-side recovery resolution ensures IP-matched streams!
+        const instances = [
+          'https://pipedapi.kavin.rocks',
+          'https://pipedapi.lunar.icu',
+          'https://pipedapi.smnz.de'
+        ];
         
-        setTimeout(() => { ignorePauseRef.current = false; }, 1000);
+        let recoveredUrl = null;
+        Promise.any(instances.map(instance => 
+          fetch(`${instance}/streams/${videoId}`, { signal: AbortSignal.timeout(2500) })
+            .then(res => res.json())
+            .then(data => {
+              const stream = data.audioStreams?.find((s: any) => s.mimeType?.includes('mp4')) || data.audioStreams?.[0];
+              if (!stream?.url) throw new Error('No stream');
+              return stream.url;
+            })
+        ))
+        .then(url => {
+          recoveredUrl = url;
+          const currentState = usePlayerStore.getState();
+          if (currentState.currentSong?.id === currentSongId && recoveredUrl) {
+            audio.src = recoveredUrl;
+            audio.load();
+            if (currentState.isPlaying) {
+              audio.play().catch(() => {});
+            }
+          }
+        })
+        .catch(e => {
+          console.error('[AudioPlayer] Failed to recover via client APIs, falling back to server route...', e);
+          const currentState = usePlayerStore.getState();
+          if (currentState.currentSong?.id === currentSongId) {
+            audio.src = freshUrl;
+            audio.load();
+            if (currentState.isPlaying) {
+              audio.play().catch(() => {});
+            }
+          }
+        })
+        .finally(() => {
+          setTimeout(() => { ignorePauseRef.current = false; }, 1000);
+        });
         
         if (typeof window !== 'undefined' && (window as any).__adifyTriggerToast) {
           (window as any).__adifyTriggerToast("Reconnecting stream...");
@@ -372,6 +399,48 @@ export default function AudioPlayer() {
             (window as any).__adifyTriggerToast("Stream URL is unavailable.");
           }
           return;
+        }
+
+        if (!active || loadToken !== songLoadTokenRef.current) return;
+
+        // --- CLIENT-SIDE YOUTUBE RESOLUTION ---
+        // Fetch stream directly from the browser to perfectly match the user's IP signature!
+        if (streamUrl.startsWith('/api/play-yt')) {
+          try {
+            const videoId = currentSong.id.replace('youtube-', '');
+            const instances = [
+              'https://pipedapi.kavin.rocks',
+              'https://pipedapi.lunar.icu',
+              'https://pipedapi.smnz.de'
+            ];
+            
+            let clientResolvedUrl = null;
+            for (const instance of instances) {
+              try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 2000);
+                const res = await fetch(`${instance}/streams/${videoId}`, { signal: controller.signal });
+                clearTimeout(timeoutId);
+                
+                if (res.ok) {
+                  const data = await res.json();
+                  const bestStream = data.audioStreams?.find((s: any) => s.mimeType?.includes('mp4')) || data.audioStreams?.[0];
+                  if (bestStream?.url) {
+                    clientResolvedUrl = bestStream.url;
+                    console.log(`[AudioPlayer] Client-side IP-matched URL resolved via ${instance}`);
+                    break;
+                  }
+                }
+              } catch(err) {
+                // Ignore and try next instance
+              }
+            }
+            if (clientResolvedUrl) {
+              streamUrl = clientResolvedUrl;
+            }
+          } catch(e) {
+            console.error('[AudioPlayer] Client-side resolution failed, falling back to server route.', e);
+          }
         }
 
         if (!active || loadToken !== songLoadTokenRef.current) return;
