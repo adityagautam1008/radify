@@ -1,5 +1,4 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import ytdl from '@distube/ytdl-core';
 import https from 'https';
 
 export const config = {
@@ -14,6 +13,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!id) return res.status(400).send('Missing id');
 
   try {
+    // Dynamic import absolutely prevents Webpack from crashing during the Vercel build phase!
+    const ytdl = (await import('@distube/ytdl-core')).default;
+    
     const url = `https://www.youtube.com/watch?v=${id}`;
     const info = await ytdl.getInfo(url);
     const format = ytdl.chooseFormat(info.formats, { quality: 'highestaudio' });
