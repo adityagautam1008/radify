@@ -107,16 +107,31 @@ export default function AudioPlayer() {
         
         setIsBuffering(true);
         
-        // Set audio source directly to the fresh proxy URL
-        const currentState = usePlayerStore.getState();
-        if (currentState.currentSong?.id === currentSongId) {
-          audio.src = freshUrl;
-          audio.load();
-          
-          if (currentState.isPlaying) {
-            audio.play().catch(() => {});
-          }
-        }
+        // Fetch the direct URL to bypass Vercel timeouts even during recovery
+        fetch(`${freshUrl}&json=true`)
+          .then(res => res.json())
+          .then(data => {
+            const currentState = usePlayerStore.getState();
+            if (currentState.currentSong?.id === currentSongId && data.streamUrl) {
+              audio.src = data.streamUrl;
+              audio.load();
+              if (currentState.isPlaying) {
+                audio.play().catch(() => {});
+              }
+            }
+          })
+          .catch(e => {
+            console.error('[AudioPlayer] Failed to recover stream via JSON:', e);
+            // Fallback to proxy
+            const currentState = usePlayerStore.getState();
+            if (currentState.currentSong?.id === currentSongId) {
+              audio.src = freshUrl;
+              audio.load();
+              if (currentState.isPlaying) {
+                audio.play().catch(() => {});
+              }
+            }
+          });
         
         if (typeof window !== 'undefined' && (window as any).__adifyTriggerToast) {
           (window as any).__adifyTriggerToast("Reconnecting stream...");
@@ -313,6 +328,27 @@ export default function AudioPlayer() {
           }
           return;
         }
+
+        // --- CRITICAL FIX FOR VERCEL DEPLOYMENTS ---
+        // If the URL is our proxy endpoint, fetch the DIRECT stream URL first!
+        // This stops Vercel from timing out after 10s because the browser will stream
+        // the audio straight from the external server instead of proxying through Vercel.
+        if (streamUrl.startsWith('/api/play-yt')) {
+          try {
+            const separator = streamUrl.includes('?') ? '&' : '?';
+            const resolveUrl = `${streamUrl}${separator}json=true`;
+            const res = await fetch(resolveUrl);
+            const data = await res.json();
+            if (data.streamUrl) {
+              streamUrl = data.streamUrl;
+              console.log('[AudioPlayer] Resolved direct streaming URL to bypass Vercel proxy.');
+            }
+          } catch (e) {
+            console.error('[AudioPlayer] Failed to resolve direct stream URL, falling back to proxy...', e);
+          }
+        }
+
+        if (!active || loadToken !== songLoadTokenRef.current) return;
 
         setIsBuffering(true);
         audio.src = streamUrl;

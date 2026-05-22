@@ -3,6 +3,10 @@ import { getAudioUrl } from '@/utils/ytDlp';
 import { fetchSaavnSongsWithFallback } from '@/lib/saavn';
 
 export const dynamic = 'force-dynamic';
+// NOTE: This route proxies long-running audio streams.
+// It requires a persistent server (Railway, Render, Fly.io) — NOT Vercel serverless.
+// Vercel free tier 10s timeout and pro 60s timeout will both fail for full songs.
+export const maxDuration = 300; // 5 minutes — respected by Vercel Pro & compatible hosts
 
 let cachedInstances: string[] = [];
 let lastFetchTime = 0;
