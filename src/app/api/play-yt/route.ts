@@ -117,6 +117,47 @@ async function getPipedStream(id: string): Promise<string | null> {
   return null;
 }
 
+async function getCobaltStream(id: string): Promise<string | null> {
+  const instances = [
+    'https://api.cobalt.tools',
+    'https://cobalt.q0.ng',
+    'https://co.wuk.sh',
+    'https://api.cobalt.best'
+  ];
+
+  for (const instance of instances) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2500);
+      const res = await fetch(instance, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: `https://www.youtube.com/watch?v=${id}`,
+          isAudioOnly: true,
+          aFormat: 'mp3'
+        }),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.status === 'stream' && data.url) {
+          console.log(`[play-yt] Cobalt API resolved stream on: ${instance}`);
+          return data.url;
+        }
+      }
+    } catch (e) {
+      // Ignored, try next instance
+    }
+  }
+  return null;
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
@@ -139,7 +180,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(cachedUrl, 302);
   }
 
-  // 2. Try Piped API (Fastest and most reliable proxy URL)
+  // 2. Try Cobalt API (Highly robust proxy streams, zero IP lock)
+  const cobaltUrl = await getCobaltStream(id);
+  if (cobaltUrl) {
+    resolvedCache.set(id, { url: cobaltUrl, timestamp: Date.now() });
+    if (json) return NextResponse.json({ streamUrl: cobaltUrl }, { headers: corsHeaders });
+    return NextResponse.redirect(cobaltUrl, 302);
+  }
+
+  // 3. Try Piped API (Fastest and most reliable fallback proxy URL)
   const pipedUrl = await getPipedStream(id);
   if (pipedUrl) {
     resolvedCache.set(id, { url: pipedUrl, timestamp: Date.now() });
