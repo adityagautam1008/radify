@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
     },
   },
   // Allow streaming responses in API routes
-  serverExternalPackages: [],
+  serverExternalPackages: ['@distube/ytdl-core'],
 };
 
 export default nextConfig;
