@@ -96,6 +96,7 @@ export async function GET(request: Request, context: RouteContext) {
     if (rangeHeader) {
       fetchHeaders.set('Range', rangeHeader);
     }
+    fetchHeaders.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
 
     const ytResponse = await fetch(streamUrl, {
       headers: fetchHeaders,
