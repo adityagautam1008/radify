@@ -1,0 +1,7 @@
+#Thu May 28 09:50:22 IST 2026
+base.0=/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/build/intermediates/dex/release/mergeDexRelease/classes.dex
+base.1=/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/build/intermediates/global_synthetics_dex/release/mergeReleaseGlobalSynthetics/classes.dex
+path.0=classes.dex
+path.1=classes.dex
+renamed.0=classes.dex
+renamed.1=classes2.dex

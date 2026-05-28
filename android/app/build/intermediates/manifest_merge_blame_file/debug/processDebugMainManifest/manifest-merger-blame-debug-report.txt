@@ -1,0 +1,88 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.adify.app"
+4    android:versionCode="1"
+5    android:versionName="1.0" >
+6
+7    <uses-sdk
+8        android:minSdkVersion="23"
+9        android:targetSdkVersion="35" />
+10
+11    <uses-permission android:name="android.permission.INTERNET" />
+11-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:2:5-67
+11-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:2:22-64
+12    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+12-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:3:5-77
+12-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:3:22-74
+13    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+13-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:4:5-92
+13-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:4:22-89
+14    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+14-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:5:5-77
+14-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:5:22-74
+15
+16    <permission
+16-->[androidx.core:core:1.12.0] /Users/adityagautam01008gmail.com/.gradle/caches/8.10.2/transforms/66bcb72a31ba84a814f50794b3af8fa5/transformed/core-1.12.0/AndroidManifest.xml:22:5-24:47
+17        android:name="com.adify.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+17-->[androidx.core:core:1.12.0] /Users/adityagautam01008gmail.com/.gradle/caches/8.10.2/transforms/66bcb72a31ba84a814f50794b3af8fa5/transformed/core-1.12.0/AndroidManifest.xml:23:9-81
+18        android:protectionLevel="signature" />
+18-->[androidx.core:core:1.12.0] /Users/adityagautam01008gmail.com/.gradle/caches/8.10.2/transforms/66bcb72a31ba84a814f50794b3af8fa5/transformed/core-1.12.0/AndroidManifest.xml:24:9-44
+19
+20    <uses-permission android:name="com.adify.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+20-->[androidx.core:core:1.12.0] /Users/adityagautam01008gmail.com/.gradle/caches/8.10.2/transforms/66bcb72a31ba84a814f50794b3af8fa5/transformed/core-1.12.0/AndroidManifest.xml:26:5-97
+20-->[androidx.core:core:1.12.0] /Users/adityagautam01008gmail.com/.gradle/caches/8.10.2/transforms/66bcb72a31ba84a814f50794b3af8fa5/transformed/core-1.12.0/AndroidManifest.xml:26:22-94
+21
+22    <application
+22-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:7:5-31:19
+23        android:allowBackup="true"
+23-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:8:9-35
+24        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+24-->[androidx.core:core:1.12.0] /Users/adityagautam01008gmail.com/.gradle/caches/8.10.2/transforms/66bcb72a31ba84a814f50794b3af8fa5/transformed/core-1.12.0/AndroidManifest.xml:28:18-86
+25        android:debuggable="true"
+26        android:extractNativeLibs="false"
+27        android:hardwareAccelerated="true"
+27-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:9:9-43
+28        android:icon="@drawable/ic_launcher"
+28-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:10:9-45
+29        android:label="@string/app_name"
+29-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:11:9-41
+30        android:networkSecurityConfig="@xml/network_security_config"
+30-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:12:9-69
+31        android:theme="@style/AppTheme"
+31-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:13:9-40
+32        android:usesCleartextTraffic="true" >
+32-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:14:9-44
+33        <activity
+33-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:15:9-24:20
+34            android:name="com.adify.app.MainActivity"
+34-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:16:13-41
+35            android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
+35-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:17:13-83
+36            android:exported="true"
+36-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:19:13-36
+37            android:launchMode="singleTop" >
+37-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:18:13-43
+38            <intent-filter>
+38-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:20:13-23:29
+39                <action android:name="android.intent.action.MAIN" />
+39-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:21:17-69
+39-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:21:25-66
+40
+41                <category android:name="android.intent.category.LAUNCHER" />
+41-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:22:17-77
+41-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:22:27-74
+42            </intent-filter>
+43        </activity>
+44
+45        <service
+45-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:26:9-30:19
+46            android:name="com.adify.app.MediaPlaybackService"
+46-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:27:13-49
+47            android:exported="false"
+47-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:29:13-37
+48            android:foregroundServiceType="mediaPlayback" >
+48-->/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/src/main/AndroidManifest.xml:28:13-58
+49        </service>
+50    </application>
+51
+52</manifest>

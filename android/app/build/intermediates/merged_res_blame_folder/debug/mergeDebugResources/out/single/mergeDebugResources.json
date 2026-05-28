@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "com.adify.app-debug-8:/xml_network_security_config.xml.flat",
+        "source": "com.adify.app-main-10:/xml/network_security_config.xml"
+    },
+    {
+        "merged": "com.adify.app-debug-8:/drawable_ic_launcher.xml.flat",
+        "source": "com.adify.app-main-10:/drawable/ic_launcher.xml"
+    }
+]

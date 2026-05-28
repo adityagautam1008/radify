@@ -1,0 +1,19 @@
+<lint-module
+    format="1"
+    dir="/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app"
+    name=":app"
+    type="APP"
+    maven="ADIFY Android:app:unspecified"
+    agpVersion="8.7.3"
+    buildFolder="build"
+    bootClassPath="/Users/adityagautam01008gmail.com/Library/Android/sdk/platforms/android-35/android.jar:/Users/adityagautam01008gmail.com/Library/Android/sdk/build-tools/34.0.0/core-lambda-stubs.jar"
+    javaSourceLevel="1.8"
+    compileTarget="android-35"
+    neverShrinking="true">
+  <lintOptions
+      abortOnError="true"
+      absolutePaths="true"
+      checkReleaseBuilds="true"
+      explainIssues="true"/>
+  <variant name="release"/>
+</lint-module>

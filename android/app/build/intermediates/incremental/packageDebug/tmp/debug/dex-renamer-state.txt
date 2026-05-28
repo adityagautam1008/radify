@@ -1,0 +1,10 @@
+#Thu May 28 09:29:19 IST 2026
+base.0=/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/build/intermediates/dex/debug/mergeProjectDexDebug/0/classes.dex
+base.1=/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/build/intermediates/dex/debug/mergeProjectDexDebug/12/classes.dex
+base.2=/Users/adityagautam01008gmail.com/Desktop/ADIFY/adify/android/app/build/intermediates/dex/debug/mergeExtDexDebug/classes.dex
+path.0=0/classes.dex
+path.1=12/classes.dex
+path.2=classes.dex
+renamed.0=classes.dex
+renamed.1=classes2.dex
+renamed.2=classes3.dex

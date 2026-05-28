@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+export type MusicSource = 'saavn' | 'youtube' | 'demo';
+
 export interface Song {
   id: string;
   title: string;
@@ -8,11 +10,11 @@ export interface Song {
   duration: number;
   artist: string;
   image: string;
-  streamUrl: string;
-  streamUrl_low?: string;
-  streamUrl_med?: string;
-  streamUrl_high?: string;
-  source?: 'saavn' | 'youtube';
+  source: MusicSource;
+  streamUrl?: string;
+  previewUrl?: string;
+  embedUrl?: string;
+  externalUrl?: string;
 }
 
 export interface Playlist {
@@ -22,52 +24,77 @@ export interface Playlist {
   createdAt: number;
 }
 
+export type ThemeMood = 'emerald' | 'sunset' | 'ocean' | 'amethyst' | 'cyberpunk';
+
+export interface LibraryBackupData {
+  likedSongs?: Song[];
+  playlists?: Playlist[];
+  recentSongs?: Song[];
+  downloadedSongs?: Song[];
+  theme?: ThemeMood;
+}
+
 interface PlayerState {
   currentSong: Song | null;
   isPlaying: boolean;
   queue: Song[];
   currentIndex: number;
   volume: number;
-  likedSongs: Song[];
   currentTime: number;
   duration: number;
-  shuffle: boolean;
-  sleepTimerMinutes: number | null;  // null = off
-  sleepTimerEnd: number | null;      // epoch ms when timer expires
-  isBuffering: boolean;
-  setIsBuffering: (isBuffering: boolean) => void;
-  
-  // Custom Personalization States
-  recentSongs: Song[];
+  likedSongs: Song[];
   playlists: Playlist[];
-
-  // Actions
+  recentSongs: Song[];
+  downloadedSongs: Song[];
+  theme: ThemeMood;
+  setSong: (song: Song, queue?: Song[]) => void;
   play: () => void;
   pause: () => void;
-  setSong: (song: Song, queue?: Song[]) => void;
-  setQueue: (queue: Song[]) => void;
   next: () => void;
   prev: () => void;
   setVolume: (volume: number) => void;
-  toggleLike: (song: Song) => void;
   setTime: (time: number) => void;
   setDuration: (duration: number) => void;
-  loadLikedSongs: () => void;
-  toggleShuffle: () => void;
-  setSleepTimer: (minutes: number | null) => void;
-
-  moveQueueSong: (fromIndex: number, toIndex: number) => void;
-  removeQueueSong: (index: number) => void;
-
-  // Custom Personalization Actions
-  addRecentSong: (song: Song) => void;
+  setQueue: (queue: Song[], currentSong?: Song | null) => void;
+  moveQueueSong: (songId: string, direction: -1 | 1) => void;
+  moveLikedSong: (songId: string, direction: -1 | 1) => void;
+  movePlaylistSong: (playlistId: string, songId: string, direction: -1 | 1) => void;
+  toggleLike: (song: Song) => void;
   createPlaylist: (name: string) => void;
-  deletePlaylist: (playlistId: string) => void;
   addSongToPlaylist: (playlistId: string, song: Song) => void;
   removeSongFromPlaylist: (playlistId: string, songId: string) => void;
-  loadHistoryAndPlaylists: () => void;
-  setLikedSongs: (songs: Song[]) => void;
+  deletePlaylist: (playlistId: string) => void;
+  addDownloadedSong: (song: Song) => void;
+  removeDownloadedSong: (songId: string) => void;
+  setTheme: (theme: ThemeMood) => void;
+  importLibrary: (data: LibraryBackupData) => void;
+  loadLibrary: () => void;
 }
+
+const readJson = <T,>(key: string, fallback: T): T => {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const value = window.localStorage.getItem(key);
+    return value ? JSON.parse(value) : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const writeJson = (key: string, value: unknown) => {
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  }
+};
+
+const moveItem = <T extends { id: string }>(items: T[], itemId: string, direction: -1 | 1) => {
+  const index = items.findIndex((item) => item.id === itemId);
+  const nextIndex = index + direction;
+  if (index < 0 || nextIndex < 0 || nextIndex >= items.length) return items;
+  const next = [...items];
+  [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+  return next;
+};
 
 export const usePlayerStore = create<PlayerState>((set, get) => ({
   currentSong: null,
@@ -75,294 +102,181 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   queue: [],
   currentIndex: -1,
   volume: 0.8,
-  likedSongs: [],
   currentTime: 0,
   duration: 0,
-  shuffle: false,
-  sleepTimerMinutes: null,
-  sleepTimerEnd: null,
-  isBuffering: false,
-  setIsBuffering: (isBuffering) => set({ isBuffering }),
-
-  // Initial State
-  recentSongs: [],
+  likedSongs: [],
   playlists: [],
+  recentSongs: [],
+  downloadedSongs: [],
+  theme: 'emerald',
 
-  play: () => {
-    if (typeof window !== 'undefined' && (window as any).__adifyBlessAudio) {
-      (window as any).__adifyBlessAudio();
-    }
-    set({ isPlaying: true });
-  },
-  
-  pause: () => set({ isPlaying: false }),
-  
   setSong: (song, queue = []) => {
-    if (typeof window !== 'undefined' && (window as any).__adifyBlessAudio) {
-      (window as any).__adifyBlessAudio();
+    const nextQueue = queue.length ? queue : [song];
+    const currentIndex = Math.max(0, nextQueue.findIndex((item) => item.id === song.id));
+    const recentSongs = [song, ...get().recentSongs.filter((item) => item.id !== song.id)].slice(0, 16);
+    const isSameSong = get().currentSong?.id === song.id;
+
+    writeJson('adify_recent_songs', recentSongs);
+
+    if (typeof window !== 'undefined' && (window as any).Android) {
+      (window as any).Android.onTrackChanged(song.title, song.artist, song.image);
+      (window as any).Android.onPlaybackStateChanged(true, isSameSong ? get().currentTime : 0, isSameSong ? get().duration || song.duration || 0 : song.duration || 0);
     }
-    const activeQueue = queue.length > 0 ? queue : [song];
-    const index = activeQueue.findIndex((s) => s.id === song.id);
-    
-    // Automatically add song to history on play
-    get().addRecentSong(song);
 
     set({
       currentSong: song,
-      queue: activeQueue,
-      currentIndex: index !== -1 ? index : 0,
+      queue: nextQueue,
+      currentIndex,
       isPlaying: true,
-      currentTime: 0,
+      currentTime: isSameSong ? get().currentTime : 0,
+      duration: isSameSong ? get().duration || song.duration || 0 : song.duration || 0,
+      recentSongs,
     });
   },
 
-  setQueue: (queue) => set({ queue }),
+  play: () => {
+    if (typeof window !== 'undefined' && (window as any).Android) {
+      (window as any).Android.onPlaybackStateChanged(true, get().currentTime, get().duration);
+    }
+    set({ isPlaying: true });
+  },
+  pause: () => {
+    if (typeof window !== 'undefined' && (window as any).Android) {
+      (window as any).Android.onPlaybackStateChanged(false, get().currentTime, get().duration);
+    }
+    set({ isPlaying: false });
+  },
 
   next: () => {
-    if (typeof window !== 'undefined' && (window as any).__adifyBlessAudio) {
-      (window as any).__adifyBlessAudio();
-    }
-    const { queue, currentIndex, shuffle } = get();
-    if (queue.length === 0) return;
-    
-    let nextIndex: number;
-    if (shuffle) {
-      if (queue.length === 1) {
-        nextIndex = 0;
-      } else {
-        do {
-          nextIndex = Math.floor(Math.random() * queue.length);
-        } while (nextIndex === currentIndex);
-      }
-    } else {
-      nextIndex = (currentIndex + 1) % queue.length;
-    }
-
-    // Automatically add next song to history
-    get().addRecentSong(queue[nextIndex]);
-
-    set({
-      currentSong: queue[nextIndex],
-      currentIndex: nextIndex,
-      isPlaying: true,
-      currentTime: 0,
-    });
+    const { queue, currentIndex, setSong } = get();
+    if (!queue.length) return;
+    setSong(queue[(currentIndex + 1) % queue.length], queue);
   },
 
   prev: () => {
-    if (typeof window !== 'undefined' && (window as any).__adifyBlessAudio) {
-      (window as any).__adifyBlessAudio();
-    }
-    const { queue, currentIndex } = get();
-    if (queue.length === 0) return;
-    
-    const prevIndex = currentIndex - 1 < 0 ? queue.length - 1 : currentIndex - 1;
-    
-    // Automatically add previous song to history
-    get().addRecentSong(queue[prevIndex]);
-
-    set({
-      currentSong: queue[prevIndex],
-      currentIndex: prevIndex,
-      isPlaying: true,
-      currentTime: 0,
-    });
+    const { queue, currentIndex, setSong } = get();
+    if (!queue.length) return;
+    setSong(queue[(currentIndex - 1 + queue.length) % queue.length], queue);
   },
 
   setVolume: (volume) => set({ volume }),
-
-  toggleLike: (song) => {
-    const { likedSongs } = get();
-    const isLiked = likedSongs.some((s) => s.id === song.id);
-    let updated: Song[];
-    
-    if (isLiked) {
-      updated = likedSongs.filter((s) => s.id !== song.id);
-    } else {
-      updated = [...likedSongs, song];
-    }
-    
-    localStorage.setItem('adify_liked_songs', JSON.stringify(updated));
-    set({ likedSongs: updated });
-  },
-
   setTime: (currentTime) => set({ currentTime }),
-  
   setDuration: (duration) => set({ duration }),
-
-  loadLikedSongs: () => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('adify_liked_songs');
-      if (saved) {
-        try {
-          set({ likedSongs: JSON.parse(saved) });
-        } catch (e) {
-          console.error('Failed to parse liked songs', e);
-        }
-      }
-    }
-  },
-
-  toggleShuffle: () => set((state) => ({ shuffle: !state.shuffle })),
-
-  setSleepTimer: (minutes) => {
-    if (minutes === null) {
-      set({ sleepTimerMinutes: null, sleepTimerEnd: null });
-    } else {
-      set({
-        sleepTimerMinutes: minutes,
-        sleepTimerEnd: Date.now() + minutes * 60 * 1000,
-      });
-    }
-  },
-
-  moveQueueSong: (fromIndex, toIndex) => {
-    const { queue, currentIndex } = get();
-    if (fromIndex < 0 || fromIndex >= queue.length || toIndex < 0 || toIndex >= queue.length) return;
-
-    const updated = [...queue];
-    const [movedSong] = updated.splice(fromIndex, 1);
-    updated.splice(toIndex, 0, movedSong);
-
-    let newCurrentIndex = currentIndex;
-    if (currentIndex === fromIndex) {
-      newCurrentIndex = toIndex;
-    } else if (fromIndex < currentIndex && toIndex >= currentIndex) {
-      newCurrentIndex = currentIndex - 1;
-    } else if (fromIndex > currentIndex && toIndex <= currentIndex) {
-      newCurrentIndex = currentIndex + 1;
-    }
-
-    set({ queue: updated, currentIndex: newCurrentIndex });
-  },
-
-  removeQueueSong: (index) => {
-    const { queue, currentIndex, currentSong } = get();
-    if (index < 0 || index >= queue.length) return;
-
-    const updated = queue.filter((_, idx) => idx !== index);
-    
-    let newCurrentIndex = currentIndex;
-    let newCurrentSong = currentSong;
-    
-    if (currentIndex === index) {
-      if (updated.length > 0) {
-        newCurrentIndex = index >= updated.length ? 0 : index;
-        newCurrentSong = updated[newCurrentIndex];
-      } else {
-        newCurrentIndex = -1;
-        newCurrentSong = null;
-      }
-    } else if (index < currentIndex) {
-      newCurrentIndex = currentIndex - 1;
-    }
-
-    set({ 
-      queue: updated, 
-      currentIndex: newCurrentIndex,
-      currentSong: newCurrentSong,
-      isPlaying: updated.length > 0 ? get().isPlaying : false 
+  setQueue: (queue, currentSong) => {
+    const activeSong = currentSong || get().currentSong;
+    set({
+      queue,
+      currentIndex: activeSong ? Math.max(0, queue.findIndex((song) => song.id === activeSong.id)) : -1,
     });
   },
 
-  // HISTORY ACTIONS
-  addRecentSong: (song) => {
-    const { recentSongs } = get();
-    // Filter out if song already exists in history, then prepend it to top
-    const filtered = recentSongs.filter((s) => s.id !== song.id);
-    const updated = [song, ...filtered].slice(0, 25); // Limit history to last 25 songs
-    
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('adify_recent_songs', JSON.stringify(updated));
-    }
-    set({ recentSongs: updated });
+  moveQueueSong: (songId, direction) => {
+    const queue = moveItem(get().queue, songId, direction);
+    const currentSong = get().currentSong;
+    set({
+      queue,
+      currentIndex: currentSong ? Math.max(0, queue.findIndex((song) => song.id === currentSong.id)) : -1,
+    });
   },
 
-  // PLAYLIST ACTIONS
+  moveLikedSong: (songId, direction) => {
+    const likedSongs = moveItem(get().likedSongs, songId, direction);
+    writeJson('adify_liked_songs', likedSongs);
+    set({ likedSongs });
+  },
+
+  movePlaylistSong: (playlistId, songId, direction) => {
+    const playlists = get().playlists.map((playlist) => (
+      playlist.id === playlistId
+        ? { ...playlist, songs: moveItem(playlist.songs, songId, direction) }
+        : playlist
+    ));
+    writeJson('adify_playlists', playlists);
+    set({ playlists });
+  },
+
+  toggleLike: (song) => {
+    const exists = get().likedSongs.some((item) => item.id === song.id);
+    const likedSongs = exists
+      ? get().likedSongs.filter((item) => item.id !== song.id)
+      : [song, ...get().likedSongs];
+    writeJson('adify_liked_songs', likedSongs);
+    set({ likedSongs });
+  },
+
   createPlaylist: (name) => {
-    const { playlists } = get();
-    const newPlaylist: Playlist = {
-      id: `playlist-${Date.now()}`,
-      name,
-      songs: [],
-      createdAt: Date.now(),
-    };
-    const updated = [...playlists, newPlaylist];
-    
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('adify_playlists', JSON.stringify(updated));
-    }
-    set({ playlists: updated });
-  },
-
-  deletePlaylist: (playlistId) => {
-    const { playlists } = get();
-    const updated = playlists.filter((p) => p.id !== playlistId);
-    
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('adify_playlists', JSON.stringify(updated));
-    }
-    set({ playlists: updated });
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const playlists = [
+      ...get().playlists,
+      { id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2) + Date.now().toString(36), name: trimmed, songs: [], createdAt: Date.now() },
+    ];
+    writeJson('adify_playlists', playlists);
+    set({ playlists });
   },
 
   addSongToPlaylist: (playlistId, song) => {
-    const { playlists } = get();
-    const updated = playlists.map((p) => {
-      if (p.id === playlistId) {
-        // Prevent duplicate songs in playlist
-        const exists = p.songs.some((s) => s.id === song.id);
-        if (exists) return p;
-        return {
-          ...p,
-          songs: [...p.songs, song],
-        };
-      }
-      return p;
+    const playlists = get().playlists.map((playlist) => {
+      if (playlist.id !== playlistId || playlist.songs.some((item) => item.id === song.id)) return playlist;
+      return { ...playlist, songs: [...playlist.songs, song] };
     });
-
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('adify_playlists', JSON.stringify(updated));
-    }
-    set({ playlists: updated });
+    writeJson('adify_playlists', playlists);
+    set({ playlists });
   },
 
   removeSongFromPlaylist: (playlistId, songId) => {
-    const { playlists } = get();
-    const updated = playlists.map((p) => {
-      if (p.id === playlistId) {
-        return {
-          ...p,
-          songs: p.songs.filter((s) => s.id !== songId),
-        };
-      }
-      return p;
-    });
-
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('adify_playlists', JSON.stringify(updated));
-    }
-    set({ playlists: updated });
+    const playlists = get().playlists.map((playlist) => (
+      playlist.id === playlistId
+        ? { ...playlist, songs: playlist.songs.filter((song) => song.id !== songId) }
+        : playlist
+    ));
+    writeJson('adify_playlists', playlists);
+    set({ playlists });
   },
 
-  loadHistoryAndPlaylists: () => {
-    if (typeof window !== 'undefined') {
-      const savedHistory = localStorage.getItem('adify_recent_songs');
-      const savedPlaylists = localStorage.getItem('adify_playlists');
-
-      try {
-        const recentSongs = savedHistory ? JSON.parse(savedHistory) : [];
-        const playlists = savedPlaylists ? JSON.parse(savedPlaylists) : [];
-        set({ recentSongs, playlists });
-      } catch (e) {
-        console.error('Failed to parse history or playlists', e);
-      }
-    }
+  deletePlaylist: (playlistId) => {
+    const playlists = get().playlists.filter((playlist) => playlist.id !== playlistId);
+    writeJson('adify_playlists', playlists);
+    set({ playlists });
   },
 
-  setLikedSongs: (songs) => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('adify_liked_songs', JSON.stringify(songs));
-    }
-    set({ likedSongs: songs });
+  addDownloadedSong: (song) => {
+    const downloadedSongs = [song, ...get().downloadedSongs.filter((item) => item.id !== song.id)];
+    writeJson('adify_downloaded_songs', downloadedSongs);
+    set({ downloadedSongs });
   },
+
+  removeDownloadedSong: (songId) => {
+    const downloadedSongs = get().downloadedSongs.filter((song) => song.id !== songId);
+    writeJson('adify_downloaded_songs', downloadedSongs);
+    set({ downloadedSongs });
+  },
+
+  setTheme: (theme) => {
+    writeJson('adify_theme', theme);
+    set({ theme });
+  },
+
+  importLibrary: (data) => {
+    const likedSongs = data.likedSongs || [];
+    const playlists = data.playlists || [];
+    const recentSongs = data.recentSongs || [];
+    const downloadedSongs = data.downloadedSongs || [];
+    const theme = data.theme || 'emerald';
+
+    writeJson('adify_liked_songs', likedSongs);
+    writeJson('adify_playlists', playlists);
+    writeJson('adify_recent_songs', recentSongs);
+    writeJson('adify_downloaded_songs', downloadedSongs);
+    writeJson('adify_theme', theme);
+    set({ likedSongs, playlists, recentSongs, downloadedSongs, theme });
+  },
+
+  loadLibrary: () => set({
+    likedSongs: readJson<Song[]>('adify_liked_songs', []),
+    playlists: readJson<Playlist[]>('adify_playlists', []),
+    recentSongs: readJson<Song[]>('adify_recent_songs', []),
+    downloadedSongs: readJson<Song[]>('adify_downloaded_songs', []),
+    theme: readJson<ThemeMood>('adify_theme', 'emerald'),
+  }),
 }));

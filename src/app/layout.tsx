@@ -1,20 +1,9 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "ADIFY - Stream Free & Unlimited Music",
-  description: "Ad-free, beautiful music player that streams unlimited songs for free. Build playlists, see synchronized lyrics, and enjoy global high-fidelity audio.",
+  description: "Fast ADIFY music app powered by Saavn audio search and in-app streaming.",
   icons: {
     icon: [
       { url: "/logo.jpg" },
@@ -33,10 +22,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
+    <html lang="en" className="h-full antialiased">
       <head>
         <link rel="manifest" href="/manifest.json" />
         <link rel="icon" href="/logo.jpg" type="image/jpeg" />

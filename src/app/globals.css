@@ -12,6 +12,11 @@ body {
   overflow: hidden;
 }
 
+.app-shell {
+  height: 100vh;
+  height: 100dvh;
+}
+
 .custom-scrollbar::-webkit-scrollbar {
   height: 8px;
 }
@@ -21,6 +26,65 @@ body {
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background-color: #3f3f46;
   border-radius: 20px;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.seek-slider::-webkit-slider-runnable-track {
+  height: 20px;
+  background: transparent;
+}
+
+.seek-slider::-webkit-slider-thumb {
+  width: 12px;
+  height: 12px;
+  margin-top: 4px;
+  appearance: none;
+  border-radius: 9999px;
+  background: #4ade80;
+  box-shadow: 0 0 0 4px rgba(74, 222, 128, 0.16);
+  opacity: 0;
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+
+.seek-slider:hover::-webkit-slider-thumb,
+.seek-slider:focus-visible::-webkit-slider-thumb {
+  opacity: 1;
+}
+
+.seek-slider:active::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+
+.seek-slider::-moz-range-track {
+  height: 20px;
+  background: transparent;
+}
+
+.seek-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 9999px;
+  background: #4ade80;
+  box-shadow: 0 0 0 4px rgba(74, 222, 128, 0.16);
+  opacity: 0;
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+
+.seek-slider:hover::-moz-range-thumb,
+.seek-slider:focus-visible::-moz-range-thumb {
+  opacity: 1;
+}
+
+.seek-slider:active::-moz-range-thumb {
+  transform: scale(1.15);
 }
 
 /* Accent Themes for ADIFY */
@@ -72,6 +136,122 @@ body {
   --adify-accent-10: rgba(139, 92, 246, 0.1);
   --adify-accent-15: rgba(139, 92, 246, 0.15);
   --adify-accent-20: rgba(139, 92, 246, 0.2);
+}
+
+.theme-emerald .text-emerald-300,
+.theme-emerald .text-emerald-400,
+.theme-sunset .text-emerald-300,
+.theme-sunset .text-emerald-400,
+.theme-cyberpunk .text-emerald-300,
+.theme-cyberpunk .text-emerald-400,
+.theme-ocean .text-emerald-300,
+.theme-ocean .text-emerald-400,
+.theme-amethyst .text-emerald-300,
+.theme-amethyst .text-emerald-400 {
+  color: var(--adify-accent-soft) !important;
+}
+
+.theme-emerald .bg-emerald-400,
+.theme-sunset .bg-emerald-400,
+.theme-cyberpunk .bg-emerald-400,
+.theme-ocean .bg-emerald-400,
+.theme-amethyst .bg-emerald-400 {
+  background-color: var(--adify-accent) !important;
+}
+
+.theme-emerald .hover\:bg-emerald-300:hover,
+.theme-sunset .hover\:bg-emerald-300:hover,
+.theme-cyberpunk .hover\:bg-emerald-300:hover,
+.theme-ocean .hover\:bg-emerald-300:hover,
+.theme-amethyst .hover\:bg-emerald-300:hover {
+  background-color: var(--adify-accent-soft) !important;
+}
+
+.theme-emerald .hover\:text-emerald-300:hover,
+.theme-sunset .hover\:text-emerald-300:hover,
+.theme-cyberpunk .hover\:text-emerald-300:hover,
+.theme-ocean .hover\:text-emerald-300:hover,
+.theme-amethyst .hover\:text-emerald-300:hover {
+  color: var(--adify-accent-soft) !important;
+}
+
+.theme-emerald .border-emerald-400\/15,
+.theme-sunset .border-emerald-400\/15,
+.theme-cyberpunk .border-emerald-400\/15,
+.theme-ocean .border-emerald-400\/15,
+.theme-amethyst .border-emerald-400\/15 {
+  border-color: var(--adify-accent-15) !important;
+}
+
+.theme-emerald .border-emerald-400\/20,
+.theme-sunset .border-emerald-400\/20,
+.theme-cyberpunk .border-emerald-400\/20,
+.theme-ocean .border-emerald-400\/20,
+.theme-amethyst .border-emerald-400\/20 {
+  border-color: var(--adify-accent-20) !important;
+}
+
+.theme-emerald .border-emerald-400\/25,
+.theme-sunset .border-emerald-400\/25,
+.theme-cyberpunk .border-emerald-400\/25,
+.theme-ocean .border-emerald-400\/25,
+.theme-amethyst .border-emerald-400\/25,
+.theme-emerald .border-emerald-400\/30,
+.theme-sunset .border-emerald-400\/30,
+.theme-cyberpunk .border-emerald-400\/30,
+.theme-ocean .border-emerald-400\/30,
+.theme-amethyst .border-emerald-400\/30,
+.theme-emerald .border-emerald-400\/50,
+.theme-sunset .border-emerald-400\/50,
+.theme-cyberpunk .border-emerald-400\/50,
+.theme-ocean .border-emerald-400\/50,
+.theme-amethyst .border-emerald-400\/50 {
+  border-color: var(--adify-accent) !important;
+}
+
+.theme-emerald .bg-emerald-400\/5,
+.theme-sunset .bg-emerald-400\/5,
+.theme-cyberpunk .bg-emerald-400\/5,
+.theme-ocean .bg-emerald-400\/5,
+.theme-amethyst .bg-emerald-400\/5 {
+  background-color: var(--adify-accent-5) !important;
+}
+
+.theme-emerald .bg-emerald-400\/10,
+.theme-sunset .bg-emerald-400\/10,
+.theme-cyberpunk .bg-emerald-400\/10,
+.theme-ocean .bg-emerald-400\/10,
+.theme-amethyst .bg-emerald-400\/10 {
+  background-color: var(--adify-accent-10) !important;
+}
+
+.theme-emerald .focus\:border-emerald-400\/50:focus,
+.theme-sunset .focus\:border-emerald-400\/50:focus,
+.theme-cyberpunk .focus\:border-emerald-400\/50:focus,
+.theme-ocean .focus\:border-emerald-400\/50:focus,
+.theme-amethyst .focus\:border-emerald-400\/50:focus {
+  border-color: var(--adify-accent) !important;
+}
+
+.theme-emerald .accent-emerald-400,
+.theme-sunset .accent-emerald-400,
+.theme-cyberpunk .accent-emerald-400,
+.theme-ocean .accent-emerald-400,
+.theme-amethyst .accent-emerald-400 {
+  accent-color: var(--adify-accent) !important;
+}
+
+.theme-emerald .shadow-emerald-400\/10,
+.theme-sunset .shadow-emerald-400\/10,
+.theme-cyberpunk .shadow-emerald-400\/10,
+.theme-ocean .shadow-emerald-400\/10,
+.theme-amethyst .shadow-emerald-400\/10,
+.theme-emerald .shadow-emerald-400\/20,
+.theme-sunset .shadow-emerald-400\/20,
+.theme-cyberpunk .shadow-emerald-400\/20,
+.theme-ocean .shadow-emerald-400\/20,
+.theme-amethyst .shadow-emerald-400\/20 {
+  --tw-shadow-color: var(--adify-accent-20) !important;
 }
 
 .theme-emerald .text-green-400,
