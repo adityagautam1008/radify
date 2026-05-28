@@ -101,8 +101,19 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        if (webView != null && webView.canGoBack()) {
-            webView.goBack();
+        if (webView != null) {
+            // Call JavaScript to handle in-app tab navigation instead of webView.goBack(),
+            // which would reload the SPA and kill the audio player.
+            webView.evaluateJavascript(
+                "(function(){ if(window.handleBackButton) return window.handleBackButton(); return false; })()",
+                result -> {
+                    // If JS returned "true", the back was handled in-app (tab switched).
+                    // If "false" or null, the user is already on home — minimize app to keep music playing.
+                    if (!"true".equals(result)) {
+                        runOnUiThread(() -> moveTaskToBack(true));
+                    }
+                }
+            );
             return;
         }
         moveTaskToBack(true);

@@ -349,6 +349,39 @@ export default function AudioPlayer() {
     }
   }, [currentTime, duration]);
 
+  // 9. Register MediaSession action handlers for lock screen / headset / notification controls
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+
+    const actions: [MediaSessionAction, MediaSessionActionHandler][] = [
+      ['play', () => usePlayerStore.getState().play()],
+      ['pause', () => usePlayerStore.getState().pause()],
+      ['previoustrack', () => usePlayerStore.getState().prev()],
+      ['nexttrack', () => usePlayerStore.getState().next()],
+      ['seekto', (details) => {
+        if (details.seekTime != null) {
+          const state = usePlayerStore.getState();
+          if (state.currentSong?.source === 'youtube' && ytPlayerRef.current) {
+            ytPlayerRef.current.seekTo(details.seekTime, true);
+          } else if (audioRef.current) {
+            audioRef.current.currentTime = details.seekTime;
+          }
+          state.setTime(details.seekTime);
+        }
+      }],
+    ];
+
+    for (const [action, handler] of actions) {
+      try { navigator.mediaSession.setActionHandler(action, handler); } catch { /* unsupported action */ }
+    }
+
+    return () => {
+      for (const [action] of actions) {
+        try { navigator.mediaSession.setActionHandler(action, null); } catch { /* ignore */ }
+      }
+    };
+  }, []);
+
   return (
     <>
       {/* Native HTML5 Audio element for Saavn streaming */}

@@ -282,6 +282,20 @@ export default function AppHome() {
       .catch(() => setFeaturedSongs([]));
   }, [loadLibrary]);
 
+  // Register global back button handler for Android WebView.
+  // Instead of webView.goBack() (which reloads the SPA and kills the audio player),
+  // this navigates between in-app tabs. Returns true if handled, false to let Android minimize.
+  useEffect(() => {
+    (window as any).handleBackButton = () => {
+      if (activeTab !== 'home') {
+        setActiveTab('home');
+        return true;
+      }
+      return false; // Already on home — let Android minimize the app
+    };
+    return () => { delete (window as any).handleBackButton; };
+  }, [activeTab]);
+
   useEffect(() => {
     contentRef.current?.scrollTo({ top: 0, behavior: 'auto' });
   }, [activeTab]);
