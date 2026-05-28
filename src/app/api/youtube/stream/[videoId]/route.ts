@@ -26,11 +26,18 @@ interface PipedInstance {
   uptime_24h?: number;
 }
 
+const BROWSER_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+  'Accept': 'application/json',
+};
+
 // Fetch active instances dynamically from kavin's uptime list
 async function getDynamicPipedInstances(): Promise<string[]> {
   try {
     const res = await fetch('https://piped-instances.kavin.rocks', {
-      signal: AbortSignal.timeout(2000),
+      signal: AbortSignal.timeout(2500),
+      headers: BROWSER_HEADERS,
+      cache: 'no-store',
     });
     if (!res.ok) throw new Error('Failed to fetch instances list');
     const data: PipedInstance[] = await res.json();
@@ -49,10 +56,12 @@ async function getDynamicPipedInstances(): Promise<string[]> {
   return STATIC_PIPED_INSTANCES;
 }
 
-// Helper to fetch with a timeout signal
+// Helper to fetch with a timeout signal and browser headers
 async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
   return fetch(url, {
     signal: AbortSignal.timeout(timeoutMs),
+    headers: BROWSER_HEADERS,
+    cache: 'no-store',
   });
 }
 
@@ -109,7 +118,7 @@ export async function GET(request: Request, context: RouteContext) {
       try {
         console.log(`[youtube-stream] Trying Piped instance: ${instance}`);
         const streamInfoUrl = `${instance}/streams/${videoId}`;
-        const response = await fetchWithTimeout(streamInfoUrl, 2500); // 2.5s timeout per instance
+        const response = await fetchWithTimeout(streamInfoUrl, 3000); // 3s timeout per instance
         
         if (response.ok) {
           const data = await response.json();
