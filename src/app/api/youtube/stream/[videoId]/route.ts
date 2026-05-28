@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { existsSync } from 'node:fs';
 import ytdl from '@distube/ytdl-core';
+import play from 'play-dl';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -23,8 +25,6 @@ const withTimeout = <T,>(promise: Promise<T>, milliseconds: number) => (
 
 const execFileAsync = promisify(execFile);
 
-import { existsSync } from 'node:fs';
-
 const getYtDlpAudioUrl = async (videoId: string) => {
   const binary = existsSync('./yt-dlp_linux') ? './yt-dlp_linux' : 'yt-dlp';
   const { stdout } = await execFileAsync(binary, [
@@ -41,45 +41,20 @@ const getYtDlpAudioUrl = async (videoId: string) => {
   return stdout.trim().split('\n').find(Boolean) || '';
 };
 
-// Cache for ytdl.getInfo() to speed up subsequent Range requests
-const infoCache = new Map<string, { info: ytdl.videoInfo, timestamp: number }>();
+const infoCache = new Map<string, { url: string, timestamp: number }>();
 
-async function getCachedInfo(videoId: string): Promise<ytdl.videoInfo> {
+async function getPlayDlAudioUrl(videoId: string): Promise<string> {
   const cached = infoCache.get(videoId);
   if (cached && Date.now() - cached.timestamp < 1000 * 60 * 60) {
-    return cached.info;
+    return cached.url;
   }
-  const info = await withTimeout(ytdl.getInfo(videoId), 10000);
-  infoCache.set(videoId, { info, timestamp: Date.now() });
-  return info;
-}
-
-const PIPED_INSTANCES = [
-  'https://pipedapi.kavin.rocks',
-  'https://api.piped.projectsegfau.lt',
-  'https://pipedapi.in.projectsegfau.lt'
-];
-
-async function getPipedAudioUrl(videoId: string): Promise<string> {
-  for (const instance of PIPED_INSTANCES) {
-    try {
-      const controller = new AbortController();
-      const id = setTimeout(() => controller.abort(), 5000);
-      const res = await fetch(`${instance}/streams/${videoId}`, { signal: controller.signal });
-      clearTimeout(id);
-      if (res.ok) {
-        const data = await res.json();
-        const audioStreams = data.audioStreams || [];
-        const bestAudio = audioStreams.find((s: any) => s.mimeType?.startsWith('audio/mp4')) || audioStreams[0];
-        if (bestAudio?.url) {
-          return bestAudio.url;
-        }
-      }
-    } catch {
-      continue;
-    }
-  }
-  throw new Error('All Piped instances failed');
+  
+  const info = await play.video_info(`https://www.youtube.com/watch?v=${videoId}`);
+  const format = info.format.find((f: any) => f.mimeType?.includes('audio/mp4')) || info.format[0];
+  if (!format || !format.url) throw new Error('No format found');
+  
+  infoCache.set(videoId, { url: format.url, timestamp: Date.now() });
+  return format.url;
 }
 
 export async function GET(request: Request, context: RouteContext) {
@@ -94,18 +69,22 @@ export async function GET(request: Request, context: RouteContext) {
   try {
     let streamUrl = '';
 
+    // Attempt 1: play-dl (most robust against IP blocks)
     try {
-      const info = await getCachedInfo(videoId);
-      const format = ytdl.chooseFormat(info.formats, {
-        quality: 'highestaudio',
-        filter: 'audioonly',
-      });
-      streamUrl = format?.url || '';
+      streamUrl = await withTimeout(getPlayDlAudioUrl(videoId), 8000);
     } catch {
+      // Attempt 2: ytdl-core
       try {
-        streamUrl = await getPipedAudioUrl(videoId);
+        const info = await ytdl.getInfo(videoId);
+        const format = ytdl.chooseFormat(info.formats, { quality: 'highestaudio', filter: 'audioonly' });
+        streamUrl = format?.url || '';
       } catch {
-        streamUrl = await withTimeout(getYtDlpAudioUrl(videoId), 11000);
+        // Attempt 3: yt-dlp binary
+        try {
+          streamUrl = await withTimeout(getYtDlpAudioUrl(videoId), 15000);
+        } catch {
+          streamUrl = '';
+        }
       }
     }
 
