@@ -113,7 +113,7 @@ function cleanSongTitle(title: string): string {
     .trim();
 }
 
-// Resolves a fallback audio stream using JioSaavn CDN
+// Resolves a fallback audio stream using JioSaavn CDN with high search precision
 async function resolveJioSaavnFallback(videoId: string): Promise<string | null> {
   try {
     console.log(`[youtube-stream] Attempting JioSaavn fallback for videoId: ${videoId}`);
@@ -134,12 +134,11 @@ async function resolveJioSaavnFallback(videoId: string): Promise<string | null> 
     
     // 2. Clean the title for Saavn search
     const cleanTitle = cleanSongTitle(rawTitle);
-    const searchQuery = `${cleanTitle} ${author}`.trim();
-    console.log(`[youtube-stream] Cleaned search query: "${searchQuery}"`);
+    console.log(`[youtube-stream] Original Title: "${rawTitle}", Cleaned: "${cleanTitle}"`);
     
-    // 3. Query the stable public Saavn search API
-    const saavnSearchUrl = `https://saavn.sumit.co/api/search/songs?query=${encodeURIComponent(searchQuery)}`;
-    const searchRes = await fetch(saavnSearchUrl, {
+    // 3. Primary Search: Search using ONLY the cleaned title
+    // (Extremely accurate because YouTube titles already include song name + artist, e.g., "Kesariya Pritam Arijit Singh")
+    const searchRes = await fetch(`https://saavn.sumit.co/api/search/songs?query=${encodeURIComponent(cleanTitle)}`, {
       signal: AbortSignal.timeout(4000),
       headers: BROWSER_HEADERS,
       cache: 'no-store',
@@ -161,23 +160,28 @@ async function resolveJioSaavnFallback(videoId: string): Promise<string | null> 
           downloads.at(-1);
           
         if (bestDownload?.url) {
-          console.log(`[youtube-stream] Resolved JioSaavn fallback stream: "${song.name}"`);
+          console.log(`[youtube-stream] Resolved JioSaavn primary search: "${song.name}" by "${song.artists?.primary?.[0]?.name || ''}"`);
           return bestDownload.url;
         }
       }
     }
     
-    // Try search query again with just the cleaned title (without uploader author) in case author was a channel name mismatch
-    if (cleanTitle !== searchQuery) {
-      const fallbackSearchUrl = `https://saavn.sumit.co/api/search/songs?query=${encodeURIComponent(cleanTitle)}`;
-      const fallbackRes = await fetch(fallbackSearchUrl, {
-        signal: AbortSignal.timeout(3000),
+    // 4. Secondary Search (Backup): Only try adding the author/uploader if primary search yielded 0 results,
+    // and only if the uploader is not a noisy music network channel (like T-Series, Vevo, Sony Music, Zee, etc.)
+    const isNoisyChannel = /vevo|t-series|series|music|records|company|label|regional|official/gi.test(author);
+    if (!isNoisyChannel && author && author !== 'YouTube Music') {
+      const backupQuery = `${cleanTitle} ${author}`.trim();
+      console.log(`[youtube-stream] Primary search empty. Trying backup query: "${backupQuery}"`);
+      
+      const backupRes = await fetch(`https://saavn.sumit.co/api/search/songs?query=${encodeURIComponent(backupQuery)}`, {
+        signal: AbortSignal.timeout(3500),
         headers: BROWSER_HEADERS,
         cache: 'no-store',
       });
-      if (fallbackRes.ok) {
-        const fallbackData = await fallbackRes.json();
-        const results = fallbackData.data?.results || fallbackData.data || [];
+      
+      if (backupRes.ok) {
+        const backupData = await backupRes.json();
+        const results = backupData.data?.results || backupData.data || [];
         if (Array.isArray(results) && results.length > 0) {
           const song = results[0];
           const downloads = song.downloadUrl || [];
@@ -186,7 +190,7 @@ async function resolveJioSaavnFallback(videoId: string): Promise<string | null> 
             downloads.find((d: any) => d.quality === '160kbps') ||
             downloads.at(-1);
           if (bestDownload?.url) {
-             console.log(`[youtube-stream] Resolved simplified JioSaavn fallback stream: "${song.name}"`);
+             console.log(`[youtube-stream] Resolved backup JioSaavn search: "${song.name}"`);
              return bestDownload.url;
           }
         }
