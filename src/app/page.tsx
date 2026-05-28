@@ -1024,16 +1024,16 @@ export default function AppHome() {
 
           <div className="min-w-0 md:col-start-2 md:row-start-1 md:self-start">
             <div className="flex items-center justify-end gap-2 md:mb-2 md:justify-center md:gap-3">
-              <button onClick={prev} className="rounded-full p-2 text-zinc-400 transition hover:text-white" title="Previous"><SkipBack size={18} fill="currentColor" /></button>
+              <button onClick={prev} disabled={!currentSong || queue.length < 2} className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/[0.06] text-zinc-200 transition hover:bg-white/[0.12] hover:text-white active:scale-95 disabled:opacity-30" title="Previous"><SkipBack size={20} fill="currentColor" /></button>
               <button
                 onClick={() => (isPlaying ? pause() : play())}
                 disabled={!currentSong}
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-black transition hover:scale-105 disabled:opacity-40"
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-black transition hover:scale-105 disabled:opacity-40"
                 title={isPlaying ? 'Pause' : 'Play'}
               >
-                {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-0.5" />}
+                {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" className="ml-0.5" />}
               </button>
-              <button onClick={next} className="rounded-full p-2 text-zinc-400 transition hover:text-white" title="Next"><SkipForward size={18} fill="currentColor" /></button>
+              <button onClick={next} disabled={!currentSong || queue.length < 2} className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/[0.06] text-zinc-200 transition hover:bg-white/[0.12] hover:text-white active:scale-95 disabled:opacity-30" title="Next"><SkipForward size={20} fill="currentColor" /></button>
             </div>
           </div>
 
