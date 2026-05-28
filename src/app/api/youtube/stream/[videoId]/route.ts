@@ -1,9 +1,4 @@
 import { NextResponse } from 'next/server';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-import { existsSync } from 'node:fs';
-import ytdl from '@distube/ytdl-core';
-import play from 'play-dl';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -55,9 +50,8 @@ async function getDynamicPipedInstances(): Promise<string[]> {
 }
 
 // Helper to fetch with a timeout signal
-async function fetchWithTimeout(url: string, timeoutMs: number, options: RequestInit = {}): Promise<Response> {
+async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
   return fetch(url, {
-    ...options,
     signal: AbortSignal.timeout(timeoutMs),
   });
 }
@@ -90,36 +84,13 @@ function selectBestStream(data: any): string | null {
   return null;
 }
 
-// Last resort backup extraction utilities
-const execFileAsync = promisify(execFile);
-
-const getYtDlpAudioUrl = async (videoId: string) => {
-  const binary = existsSync('./yt-dlp_linux') ? './yt-dlp_linux' : 'yt-dlp';
-  const { stdout } = await execFileAsync(binary, [
-    `https://www.youtube.com/watch?v=${videoId}`,
-    '-f',
-    'bestaudio[ext=m4a]/bestaudio',
-    '--no-playlist',
-    '--skip-download',
-    '--print',
-    'url',
-    '--quiet',
-  ], { timeout: 10000 });
-
-  return stdout.trim().split('\n').find(Boolean) || '';
-};
-
-async function getPlayDlAudioUrl(videoId: string): Promise<string> {
-  const info = await play.video_info(`https://www.youtube.com/watch?v=${videoId}`);
-  const format = info.format.find((f: any) => f.mimeType?.includes('audio/mp4')) || info.format[0];
-  if (!format || !format.url) throw new Error('No format found');
-  return format.url;
-}
+// YouTube video ID validation regex (11-character alphanumeric, hyphen, underscore)
+const YOUTUBE_ID_REGEX = /^[a-zA-Z0-9_-]{11}$/;
 
 export async function GET(request: Request, context: RouteContext) {
   const { videoId } = await context.params;
 
-  if (!ytdl.validateID(videoId)) {
+  if (!YOUTUBE_ID_REGEX.test(videoId)) {
     return NextResponse.json({ error: 'Invalid YouTube video id' }, { status: 400 });
   }
 
@@ -163,41 +134,5 @@ export async function GET(request: Request, context: RouteContext) {
     console.error('[youtube-stream] Piped resolver error', err);
   }
 
-  // Phase 2: Backup Local Extraction
-  console.log('[youtube-stream] All Piped instances failed. Falling back to local extraction.');
-  
-  try {
-    let fallbackUrl = '';
-    
-    try {
-      fallbackUrl = await getPlayDlAudioUrl(videoId);
-    } catch {
-      try {
-        const info = await ytdl.getInfo(videoId);
-        const format = ytdl.chooseFormat(info.formats, { quality: 'highestaudio', filter: 'audioonly' });
-        fallbackUrl = format?.url || '';
-      } catch {
-        try {
-          fallbackUrl = await getYtDlpAudioUrl(videoId);
-        } catch {
-          fallbackUrl = '';
-        }
-      }
-    }
-
-    if (fallbackUrl) {
-      console.log('[youtube-stream] Resolved backup stream from local extraction');
-      return NextResponse.redirect(fallbackUrl, {
-        status: 307,
-        headers: {
-          'Cache-Control': 'public, max-age=1800',
-        },
-      });
-    }
-  } catch (err) {
-    console.error('[youtube-stream] Backup extraction failed', err);
-  }
-
-  return NextResponse.json({ error: 'Unable to resolve YouTube stream' }, { status: 502 });
+  return NextResponse.json({ error: 'Unable to resolve YouTube stream from any proxy' }, { status: 502 });
 }
-
