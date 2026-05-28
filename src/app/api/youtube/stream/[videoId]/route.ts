@@ -23,8 +23,11 @@ const withTimeout = <T,>(promise: Promise<T>, milliseconds: number) => (
 
 const execFileAsync = promisify(execFile);
 
+import { existsSync } from 'node:fs';
+
 const getYtDlpAudioUrl = async (videoId: string) => {
-  const { stdout } = await execFileAsync('yt-dlp', [
+  const binary = existsSync('./yt-dlp_linux') ? './yt-dlp_linux' : 'yt-dlp';
+  const { stdout } = await execFileAsync(binary, [
     `https://www.youtube.com/watch?v=${videoId}`,
     '-f',
     'bestaudio[ext=m4a]/bestaudio',
@@ -33,7 +36,7 @@ const getYtDlpAudioUrl = async (videoId: string) => {
     '--print',
     'url',
     '--quiet',
-  ], { timeout: 10000 });
+  ], { timeout: 15000 });
 
   return stdout.trim().split('\n').find(Boolean) || '';
 };
